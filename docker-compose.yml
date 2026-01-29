@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-server
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_MODE=release
+      - SERVER_PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=chat
+      - DB_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-in-production}
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    networks:
+      - chat-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: chat-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: chat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chat-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  migrate:
+    image: migrate/migrate:v4.17.0
+    container_name: chat-migrate
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - chat-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://postgres:postgres@postgres:5432/chat?sslmode=disable",
+      "up"
+    ]
+    profiles:
+      - tools
+
+networks:
+  chat-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
