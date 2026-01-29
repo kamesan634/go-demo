@@ -46,3 +46,4 @@ tmp/
 # Debug
 debug
 __debug_bin
+/docs
