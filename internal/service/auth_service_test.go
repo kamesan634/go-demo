@@ -240,16 +240,21 @@ func TestAuthService_ChangePassword(t *testing.T) {
 	defer cleanupAuthTestDB(t, db)
 
 	ctx := context.Background()
+	prefix := repository.GenerateUniquePrefix()
+	username := prefix + "_changepwd"
 
 	// Register
-	result, _ := service.Register(ctx, &RegisterInput{
-		Username: "testuser",
-		Email:    "test@example.com",
+	result, err := service.Register(ctx, &RegisterInput{
+		Username: username,
+		Email:    username + "@example.com",
 		Password: "password123",
 	})
+	if err != nil {
+		t.Fatalf("Failed to register: %v", err)
+	}
 
 	// Change password
-	err := service.ChangePassword(ctx, &ChangePasswordInput{
+	err = service.ChangePassword(ctx, &ChangePasswordInput{
 		UserID:          result.User.ID,
 		CurrentPassword: "password123",
 		NewPassword:     "newpassword456",
@@ -261,7 +266,7 @@ func TestAuthService_ChangePassword(t *testing.T) {
 
 	// Login with new password
 	_, err = service.Login(ctx, &LoginInput{
-		Username: "testuser",
+		Username: username,
 		Password: "newpassword456",
 	})
 
@@ -271,7 +276,7 @@ func TestAuthService_ChangePassword(t *testing.T) {
 
 	// Login with old password should fail
 	_, err = service.Login(ctx, &LoginInput{
-		Username: "testuser",
+		Username: username,
 		Password: "password123",
 	})
 
@@ -286,14 +291,19 @@ func TestAuthService_ChangePassword_WrongCurrent(t *testing.T) {
 	defer cleanupAuthTestDB(t, db)
 
 	ctx := context.Background()
+	prefix := repository.GenerateUniquePrefix()
+	username := prefix + "_changepwd_wrong"
 
-	result, _ := service.Register(ctx, &RegisterInput{
-		Username: "testuser",
-		Email:    "test@example.com",
+	result, err := service.Register(ctx, &RegisterInput{
+		Username: username,
+		Email:    username + "@example.com",
 		Password: "password123",
 	})
+	if err != nil {
+		t.Fatalf("Failed to register: %v", err)
+	}
 
-	err := service.ChangePassword(ctx, &ChangePasswordInput{
+	err = service.ChangePassword(ctx, &ChangePasswordInput{
 		UserID:          result.User.ID,
 		CurrentPassword: "wrongpassword",
 		NewPassword:     "newpassword456",

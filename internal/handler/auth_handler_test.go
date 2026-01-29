@@ -475,7 +475,8 @@ func TestAuthHandler_ChangePassword(t *testing.T) {
 	defer db.Close()
 	defer cleanupAuthHandlerTestDB(t, db)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "oldpassword123")
+	prefix := repository.GenerateUniquePrefix()
+	user := createUserForAuthHandlerTest(t, db, prefix+"_changepwd", "oldpassword123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -502,7 +503,8 @@ func TestAuthHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
 	defer db.Close()
 	defer cleanupAuthHandlerTestDB(t, db)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "oldpassword123")
+	prefix := repository.GenerateUniquePrefix()
+	user := createUserForAuthHandlerTest(t, db, prefix+"_changepwd_wrong", "oldpassword123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
