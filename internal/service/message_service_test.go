@@ -176,7 +176,7 @@ func TestMessageService_UpdateMessage_NotOwner(t *testing.T) {
 
 	room := createRoomForMessageServiceTestIsolated(t, db, prefix, owner, roomService)
 
-	roomService.Join(ctx, room.ID, otherUser.ID)
+	_ = roomService.Join(ctx, room.ID, otherUser.ID)
 
 	sent, _ := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -231,7 +231,7 @@ func TestMessageService_ListByRoomID(t *testing.T) {
 
 	// Send 5 messages
 	for i := 0; i < 5; i++ {
-		msgService.SendMessage(ctx, &SendMessageInput{
+		_, _ = msgService.SendMessage(ctx, &SendMessageInput{
 			RoomID:  room.ID,
 			UserID:  user.ID,
 			Content: "Message",
@@ -261,7 +261,7 @@ func TestMessageService_ListByRoomID_Pagination(t *testing.T) {
 
 	// Send 10 messages
 	for i := 0; i < 10; i++ {
-		msgService.SendMessage(ctx, &SendMessageInput{
+		_, _ = msgService.SendMessage(ctx, &SendMessageInput{
 			RoomID:  room.ID,
 			UserID:  user.ID,
 			Content: "Message",
@@ -290,9 +290,9 @@ func TestMessageService_Search(t *testing.T) {
 
 	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
-	msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Hello World", Type: model.MessageTypeText})
-	msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Golang is great", Type: model.MessageTypeText})
-	msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Testing", Type: model.MessageTypeText})
+	_, _ = msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Hello World", Type: model.MessageTypeText})
+	_, _ = msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Golang is great", Type: model.MessageTypeText})
+	_, _ = msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Testing", Type: model.MessageTypeText})
 
 	results, err := msgService.Search(ctx, room.ID, user.ID, "Golang", 10, 0)
 	if err != nil {

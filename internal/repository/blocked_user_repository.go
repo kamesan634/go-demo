@@ -151,7 +151,7 @@ func (r *FriendshipRepository) Accept(ctx context.Context, userID, friendID stri
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Update the existing request to accepted
 	query := `

@@ -55,7 +55,7 @@ func main() {
 
 	// Initialize logger
 	logger := initLogger(cfg.Log.Level)
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	logger.Info("Starting chat server",
 		zap.String("mode", cfg.Server.Mode),

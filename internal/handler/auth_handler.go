@@ -237,7 +237,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	user, err := h.authService.GetUserByID(c.Request.Context(), userID)
+	_, err := h.authService.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -252,7 +252,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	// Reload user
-	user, err = h.authService.GetUserByID(c.Request.Context(), userID)
+	user, err := h.authService.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, err)
 		return

@@ -95,7 +95,7 @@ func TestUserHandler_Search(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 1 {
@@ -156,7 +156,7 @@ func TestUserHandler_UnblockUser(t *testing.T) {
 	target := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	// Block first
-	userService.BlockUser(context.Background(), user.ID, target.ID)
+	_ = userService.BlockUser(context.Background(), user.ID, target.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -180,8 +180,8 @@ func TestUserHandler_ListBlockedUsers(t *testing.T) {
 	target1 := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 	target2 := createUserForHandlerTestIsolated(t, db, prefix, "charlie")
 
-	userService.BlockUser(context.Background(), user.ID, target1.ID)
-	userService.BlockUser(context.Background(), user.ID, target2.ID)
+	_ = userService.BlockUser(context.Background(), user.ID, target1.ID)
+	_ = userService.BlockUser(context.Background(), user.ID, target2.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -196,7 +196,7 @@ func TestUserHandler_ListBlockedUsers(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {
@@ -233,7 +233,7 @@ func TestUserHandler_AcceptFriendRequest(t *testing.T) {
 	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
 	friend := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
-	userService.SendFriendRequest(context.Background(), friend.ID, user.ID)
+	_ = userService.SendFriendRequest(context.Background(), friend.ID, user.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -256,8 +256,8 @@ func TestUserHandler_ListFriends(t *testing.T) {
 	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
 	friend := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
-	userService.SendFriendRequest(context.Background(), user.ID, friend.ID)
-	userService.AcceptFriendRequest(context.Background(), friend.ID, user.ID)
+	_ = userService.SendFriendRequest(context.Background(), user.ID, friend.ID)
+	_ = userService.AcceptFriendRequest(context.Background(), friend.ID, user.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 

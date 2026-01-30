@@ -134,7 +134,7 @@ func (h *Hub) registerClient(client *Client) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		h.userService.UpdateStatus(ctx, client.userID, model.UserStatusOnline)
+		_ = h.userService.UpdateStatus(ctx, client.userID, model.UserStatusOnline)
 	}()
 
 	// Broadcast user online
@@ -188,7 +188,7 @@ func (h *Hub) unregisterClient(client *Client) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			h.userService.UpdateStatus(ctx, client.userID, model.UserStatusOffline)
+			_ = h.userService.UpdateStatus(ctx, client.userID, model.UserStatusOffline)
 		}()
 
 		// Broadcast user offline
@@ -441,10 +441,10 @@ func (h *Hub) MarkAsRead(client *Client, payload MarkReadPayload) {
 
 	if payload.RoomID != "" {
 		// Room message read
-		h.roomService.UpdateLastRead(ctx, payload.RoomID, client.userID)
+		_ = h.roomService.UpdateLastRead(ctx, payload.RoomID, client.userID)
 	} else if payload.SenderID != "" {
 		// DM read
-		h.dmService.MarkAsRead(ctx, client.userID, payload.SenderID)
+		_ = h.dmService.MarkAsRead(ctx, client.userID, payload.SenderID)
 
 		// Notify sender
 		readMsg, _ := NewMessage(MessageTypeDMRead, &DMReadPayload{

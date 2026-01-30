@@ -159,7 +159,7 @@ func BenchmarkHashPassword(b *testing.B) {
 	password := "benchmarkpassword123"
 
 	for i := 0; i < b.N; i++ {
-		HashPassword(password)
+		_, _ = HashPassword(password)
 	}
 }
 

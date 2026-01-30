@@ -251,9 +251,9 @@ func TestRoomService_ListPublic(t *testing.T) {
 	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Private", Type: model.RoomTypePrivate, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Private", Type: model.RoomTypePrivate, OwnerID: owner.ID})
 
 	rooms, err := service.ListPublic(ctx, 10, 0)
 	if err != nil {
@@ -281,8 +281,8 @@ func TestRoomService_ListByUserID(t *testing.T) {
 	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
 
 	rooms, err := service.ListByUserID(ctx, owner.ID, 10, 0)
 	if err != nil {
@@ -302,9 +302,9 @@ func TestRoomService_Search(t *testing.T) {
 	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Random", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	_, _ = service.Create(ctx, &CreateRoomInput{Name: prefix + "_Random", Type: model.RoomTypePublic, OwnerID: owner.ID})
 
 	rooms, err := service.Search(ctx, prefix+"_Tech", 10, 0)
 	if err != nil {
@@ -366,7 +366,7 @@ func TestRoomService_Leave(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, member.ID)
+	_ = service.Join(ctx, room.ID, member.ID)
 
 	err := service.Leave(ctx, room.ID, member.ID)
 	if err != nil {
@@ -428,7 +428,7 @@ func TestRoomService_KickMember(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, member.ID)
+	_ = service.Join(ctx, room.ID, member.ID)
 
 	err := service.KickMember(ctx, room.ID, owner.ID, member.ID)
 	if err != nil {
@@ -452,8 +452,8 @@ func TestRoomService_KickMember_CannotKickOwner(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, admin.ID)
-	service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
+	_ = service.Join(ctx, room.ID, admin.ID)
+	_ = service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
 
 	err := service.KickMember(ctx, room.ID, admin.ID, owner.ID)
 	if err == nil {
@@ -472,7 +472,7 @@ func TestRoomService_PromoteMember(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, member.ID)
+	_ = service.Join(ctx, room.ID, member.ID)
 
 	err := service.PromoteMember(ctx, room.ID, owner.ID, member.ID)
 	if err != nil {
@@ -496,8 +496,8 @@ func TestRoomService_DemoteMember(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, admin.ID)
-	service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
+	_ = service.Join(ctx, room.ID, admin.ID)
+	_ = service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
 
 	err := service.DemoteMember(ctx, room.ID, owner.ID, admin.ID)
 	if err != nil {
@@ -521,7 +521,7 @@ func TestRoomService_ListMembers(t *testing.T) {
 
 	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	service.Join(ctx, room.ID, member.ID)
+	_ = service.Join(ctx, room.ID, member.ID)
 
 	members, err := service.ListMembers(ctx, room.ID, owner.ID)
 	if err != nil {
@@ -551,7 +551,7 @@ func TestRoomService_IsMember(t *testing.T) {
 	}
 
 	// After joining
-	service.Join(ctx, room.ID, member.ID)
+	_ = service.Join(ctx, room.ID, member.ID)
 	isMember, _ = service.IsMember(ctx, room.ID, member.ID)
 	if !isMember {
 		t.Error("Expected to be a member")

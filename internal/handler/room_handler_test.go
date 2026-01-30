@@ -108,12 +108,12 @@ func TestRoomHandler_ListPublic(t *testing.T) {
 	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	// Create rooms
-	roomService.Create(context.Background(), &service.CreateRoomInput{
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{
 		Name:    prefix + "_Public Room 1",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
-	roomService.Create(context.Background(), &service.CreateRoomInput{
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{
 		Name:    prefix + "_Public Room 2",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
@@ -132,7 +132,7 @@ func TestRoomHandler_ListPublic(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	// Count rooms with our prefix
@@ -275,7 +275,7 @@ func TestRoomHandler_Leave(t *testing.T) {
 		OwnerID: owner.ID,
 	})
 
-	roomService.Join(context.Background(), room.ID, member.ID)
+	_ = roomService.Join(context.Background(), room.ID, member.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(member.ID, member.Username)
 
@@ -304,7 +304,7 @@ func TestRoomHandler_ListMembers(t *testing.T) {
 		OwnerID: owner.ID,
 	})
 
-	roomService.Join(context.Background(), room.ID, member.ID)
+	_ = roomService.Join(context.Background(), room.ID, member.ID)
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(owner.ID, owner.Username)
 
@@ -319,7 +319,7 @@ func TestRoomHandler_ListMembers(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {
@@ -334,8 +334,8 @@ func TestRoomHandler_Search(t *testing.T) {
 
 	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: user.ID})
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: user.ID})
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: user.ID})
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: user.ID})
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -350,7 +350,7 @@ func TestRoomHandler_Search(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 1 {
@@ -365,8 +365,8 @@ func TestRoomHandler_ListMyRooms(t *testing.T) {
 
 	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: user.ID})
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: user.ID})
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: user.ID})
+	_, _ = roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: user.ID})
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -381,7 +381,7 @@ func TestRoomHandler_ListMyRooms(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {

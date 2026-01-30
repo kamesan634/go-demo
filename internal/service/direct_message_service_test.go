@@ -119,7 +119,7 @@ func TestDirectMessageService_SendMessage_Blocked(t *testing.T) {
 	ctx := context.Background()
 
 	// Receiver blocks sender
-	blockedRepo.Block(ctx, receiver.ID, sender.ID)
+	_ = blockedRepo.Block(ctx, receiver.ID, sender.ID)
 
 	_, err := service.SendMessage(ctx, &SendDMInput{
 		SenderID:   sender.ID,
@@ -143,9 +143,9 @@ func TestDirectMessageService_GetConversation(t *testing.T) {
 	ctx := context.Background()
 
 	// Send messages back and forth
-	service.SendMessage(ctx, &SendDMInput{SenderID: user1.ID, ReceiverID: user2.ID, Content: "Hi", Type: model.MessageTypeText})
-	service.SendMessage(ctx, &SendDMInput{SenderID: user2.ID, ReceiverID: user1.ID, Content: "Hello", Type: model.MessageTypeText})
-	service.SendMessage(ctx, &SendDMInput{SenderID: user1.ID, ReceiverID: user2.ID, Content: "How are you?", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: user1.ID, ReceiverID: user2.ID, Content: "Hi", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: user2.ID, ReceiverID: user1.ID, Content: "Hello", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: user1.ID, ReceiverID: user2.ID, Content: "How are you?", Type: model.MessageTypeText})
 
 	conversation, err := service.GetConversation(ctx, user1.ID, user2.ID, 10, 0)
 	if err != nil {
@@ -181,8 +181,8 @@ func TestDirectMessageService_ListConversations(t *testing.T) {
 	contact2 := createUserForDMServiceTestIsolated(t, db, prefix, "contact2")
 	ctx := context.Background()
 
-	service.SendMessage(ctx, &SendDMInput{SenderID: contact1.ID, ReceiverID: user.ID, Content: "Hi from contact1", Type: model.MessageTypeText})
-	service.SendMessage(ctx, &SendDMInput{SenderID: contact2.ID, ReceiverID: user.ID, Content: "Hi from contact2", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: contact1.ID, ReceiverID: user.ID, Content: "Hi from contact1", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: contact2.ID, ReceiverID: user.ID, Content: "Hi from contact2", Type: model.MessageTypeText})
 
 	conversations, err := service.ListConversations(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -204,8 +204,8 @@ func TestDirectMessageService_MarkAsRead(t *testing.T) {
 	ctx := context.Background()
 
 	// Send unread messages
-	service.SendMessage(ctx, &SendDMInput{SenderID: sender.ID, ReceiverID: receiver.ID, Content: "Msg 1", Type: model.MessageTypeText})
-	service.SendMessage(ctx, &SendDMInput{SenderID: sender.ID, ReceiverID: receiver.ID, Content: "Msg 2", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: sender.ID, ReceiverID: receiver.ID, Content: "Msg 1", Type: model.MessageTypeText})
+	_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: sender.ID, ReceiverID: receiver.ID, Content: "Msg 2", Type: model.MessageTypeText})
 
 	err := service.MarkAsRead(ctx, receiver.ID, sender.ID)
 	if err != nil {
@@ -252,7 +252,7 @@ func TestDirectMessageService_CountUnread(t *testing.T) {
 
 	// Send 3 unread messages
 	for i := 0; i < 3; i++ {
-		service.SendMessage(ctx, &SendDMInput{
+		_, _ = service.SendMessage(ctx, &SendDMInput{
 			SenderID:   sender.ID,
 			ReceiverID: receiver.ID,
 			Content:    "Unread",
@@ -282,12 +282,12 @@ func TestDirectMessageService_CountUnreadFromUser(t *testing.T) {
 
 	// Send messages from sender1
 	for i := 0; i < 3; i++ {
-		service.SendMessage(ctx, &SendDMInput{SenderID: sender1.ID, ReceiverID: receiver.ID, Content: "From s1", Type: model.MessageTypeText})
+		_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: sender1.ID, ReceiverID: receiver.ID, Content: "From s1", Type: model.MessageTypeText})
 	}
 
 	// Send messages from sender2
 	for i := 0; i < 2; i++ {
-		service.SendMessage(ctx, &SendDMInput{SenderID: sender2.ID, ReceiverID: receiver.ID, Content: "From s2", Type: model.MessageTypeText})
+		_, _ = service.SendMessage(ctx, &SendDMInput{SenderID: sender2.ID, ReceiverID: receiver.ID, Content: "From s2", Type: model.MessageTypeText})
 	}
 
 	count1, _ := service.CountUnreadFromUser(ctx, receiver.ID, sender1.ID)
@@ -327,7 +327,7 @@ func TestDirectMessageService_GetByID(t *testing.T) {
 	}
 
 	// Receiver can get the message
-	found, err = service.GetByID(ctx, sent.ID, receiver.ID)
+	_, err = service.GetByID(ctx, sent.ID, receiver.ID)
 	if err != nil {
 		t.Fatalf("Failed to get message as receiver: %v", err)
 	}

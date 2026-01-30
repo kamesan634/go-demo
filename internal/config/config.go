@@ -162,28 +162,28 @@ func setDefaults() {
 
 func bindEnvVariables() {
 	// Server
-	viper.BindEnv("server.host", "SERVER_HOST")
-	viper.BindEnv("server.port", "SERVER_PORT")
-	viper.BindEnv("server.mode", "SERVER_MODE")
+	_ = viper.BindEnv("server.host", "SERVER_HOST")
+	_ = viper.BindEnv("server.port", "SERVER_PORT")
+	_ = viper.BindEnv("server.mode", "SERVER_MODE")
 
 	// Database
-	viper.BindEnv("database.host", "DB_HOST")
-	viper.BindEnv("database.port", "DB_PORT")
-	viper.BindEnv("database.user", "DB_USER")
-	viper.BindEnv("database.password", "DB_PASSWORD")
-	viper.BindEnv("database.dbname", "DB_NAME")
-	viper.BindEnv("database.sslmode", "DB_SSLMODE")
+	_ = viper.BindEnv("database.host", "DB_HOST")
+	_ = viper.BindEnv("database.port", "DB_PORT")
+	_ = viper.BindEnv("database.user", "DB_USER")
+	_ = viper.BindEnv("database.password", "DB_PASSWORD")
+	_ = viper.BindEnv("database.dbname", "DB_NAME")
+	_ = viper.BindEnv("database.sslmode", "DB_SSLMODE")
 
 	// Redis
-	viper.BindEnv("redis.host", "REDIS_HOST")
-	viper.BindEnv("redis.port", "REDIS_PORT")
-	viper.BindEnv("redis.password", "REDIS_PASSWORD")
+	_ = viper.BindEnv("redis.host", "REDIS_HOST")
+	_ = viper.BindEnv("redis.port", "REDIS_PORT")
+	_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
 
 	// JWT
-	viper.BindEnv("jwt.secret", "JWT_SECRET")
+	_ = viper.BindEnv("jwt.secret", "JWT_SECRET")
 
 	// Log
-	viper.BindEnv("log.level", "LOG_LEVEL")
+	_ = viper.BindEnv("log.level", "LOG_LEVEL")
 }
 
 // GetDSN returns PostgreSQL connection string

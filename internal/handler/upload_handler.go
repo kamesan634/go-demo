@@ -52,7 +52,7 @@ func NewUploadHandler(baseURL string) *UploadHandler {
 		filepath.Join(UploadDir, AvatarSubDir),
 	}
 	for _, dir := range dirs {
-		os.MkdirAll(dir, 0755)
+		_ = os.MkdirAll(dir, 0755)
 	}
 
 	return &UploadHandler{

@@ -108,7 +108,7 @@ func TestAuthHandler_Register(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].(map[string]interface{})
 	if data["user"] == nil {
@@ -254,7 +254,7 @@ func TestAuthHandler_Login(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].(map[string]interface{})
 	if data["token"] == nil {
@@ -344,7 +344,7 @@ func TestAuthHandler_GetMe(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].(map[string]interface{})
 	if data["username"] != user.Username {
@@ -427,7 +427,7 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].(map[string]interface{})
 	if data["access_token"] == nil {

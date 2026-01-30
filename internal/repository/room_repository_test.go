@@ -28,11 +28,6 @@ func createTestUserForRoomIsolated(t *testing.T, db *sqlx.DB, prefix, username s
 	return CreateIsolatedTestUser(t, db, prefix, username)
 }
 
-func createTestRoomForRoomIsolated(t *testing.T, db *sqlx.DB, prefix string, owner *model.User) *model.Room {
-	t.Helper()
-	return CreateIsolatedTestRoom(t, db, prefix, owner)
-}
-
 func TestRoomRepository_Create(t *testing.T) {
 	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
@@ -78,7 +73,7 @@ func TestRoomRepository_GetByID(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	found, err := repo.GetByID(ctx, room.ID)
 	if err != nil {
@@ -111,7 +106,7 @@ func TestRoomRepository_GetByIDWithMemberCount(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	// Add owner as member
 	member := &model.RoomMember{
@@ -119,7 +114,7 @@ func TestRoomRepository_GetByIDWithMemberCount(t *testing.T) {
 		UserID: user.ID,
 		Role:   model.MemberRoleOwner,
 	}
-	repo.AddMember(ctx, member)
+	_ = repo.AddMember(ctx, member)
 
 	found, err := repo.GetByIDWithMemberCount(ctx, room.ID)
 	if err != nil {
@@ -146,7 +141,7 @@ func TestRoomRepository_Update(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	room.Name = "Updated Room"
 	room.Description = sql.NullString{String: "Updated description", Valid: true}
@@ -177,7 +172,7 @@ func TestRoomRepository_Delete(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	err := repo.Delete(ctx, room.ID)
 	if err != nil {
@@ -206,7 +201,7 @@ func TestRoomRepository_ListPublic(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, publicRoom)
+	_ = repo.Create(ctx, publicRoom)
 
 	privateRoom := &model.Room{
 		Name:       "Private Room",
@@ -214,7 +209,7 @@ func TestRoomRepository_ListPublic(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, privateRoom)
+	_ = repo.Create(ctx, privateRoom)
 
 	rooms, err := repo.ListPublic(ctx, 10, 0)
 	if err != nil {
@@ -245,14 +240,14 @@ func TestRoomRepository_ListByUserID(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	member := &model.RoomMember{
 		RoomID: room.ID,
 		UserID: user.ID,
 		Role:   model.MemberRoleOwner,
 	}
-	repo.AddMember(ctx, member)
+	_ = repo.AddMember(ctx, member)
 
 	rooms, err := repo.ListByUserID(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -280,7 +275,7 @@ func TestRoomRepository_Search(t *testing.T) {
 	}
 
 	for _, r := range rooms {
-		repo.Create(ctx, r)
+		_ = repo.Create(ctx, r)
 	}
 
 	results, err := repo.Search(ctx, "Tech", 10, 0)
@@ -308,7 +303,7 @@ func TestRoomRepository_AddMember(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	member := &model.RoomMember{
 		RoomID: room.ID,
@@ -348,7 +343,7 @@ func TestRoomRepository_AddMember_RoomFull(t *testing.T) {
 		OwnerID:    user1.ID,
 		MaxMembers: 1, // Only 1 member allowed
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	// Add first member
 	member1 := &model.RoomMember{
@@ -356,7 +351,7 @@ func TestRoomRepository_AddMember_RoomFull(t *testing.T) {
 		UserID: user1.ID,
 		Role:   model.MemberRoleOwner,
 	}
-	repo.AddMember(ctx, member1)
+	_ = repo.AddMember(ctx, member1)
 
 	// Try to add second member
 	member2 := &model.RoomMember{
@@ -385,14 +380,14 @@ func TestRoomRepository_RemoveMember(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	member := &model.RoomMember{
 		RoomID: room.ID,
 		UserID: user.ID,
 		Role:   model.MemberRoleOwner,
 	}
-	repo.AddMember(ctx, member)
+	_ = repo.AddMember(ctx, member)
 
 	err := repo.RemoveMember(ctx, room.ID, user.ID)
 	if err != nil {
@@ -421,14 +416,14 @@ func TestRoomRepository_GetMember(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	member := &model.RoomMember{
 		RoomID: room.ID,
 		UserID: user.ID,
 		Role:   model.MemberRoleOwner,
 	}
-	repo.AddMember(ctx, member)
+	_ = repo.AddMember(ctx, member)
 
 	found, err := repo.GetMember(ctx, room.ID, user.ID)
 	if err != nil {
@@ -462,10 +457,10 @@ func TestRoomRepository_ListMembers(t *testing.T) {
 		OwnerID:    user1.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
-	repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user1.ID, Role: model.MemberRoleOwner})
-	repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user2.ID, Role: model.MemberRoleMember})
+	_ = repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user1.ID, Role: model.MemberRoleOwner})
+	_ = repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user2.ID, Role: model.MemberRoleMember})
 
 	members, err := repo.ListMembers(ctx, room.ID)
 	if err != nil {
@@ -492,14 +487,14 @@ func TestRoomRepository_UpdateMemberRole(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	member := &model.RoomMember{
 		RoomID: room.ID,
 		UserID: user.ID,
 		Role:   model.MemberRoleMember,
 	}
-	repo.AddMember(ctx, member)
+	_ = repo.AddMember(ctx, member)
 
 	err := repo.UpdateMemberRole(ctx, room.ID, user.ID, model.MemberRoleAdmin)
 	if err != nil {
@@ -527,7 +522,7 @@ func TestRoomRepository_IsMember(t *testing.T) {
 		OwnerID:    user.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
 	// Not a member yet
 	isMember, err := repo.IsMember(ctx, room.ID, user.ID)
@@ -539,7 +534,7 @@ func TestRoomRepository_IsMember(t *testing.T) {
 	}
 
 	// Add as member
-	repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user.ID, Role: model.MemberRoleMember})
+	_ = repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user.ID, Role: model.MemberRoleMember})
 
 	isMember, _ = repo.IsMember(ctx, room.ID, user.ID)
 	if !isMember {
@@ -563,10 +558,10 @@ func TestRoomRepository_CountMembers(t *testing.T) {
 		OwnerID:    user1.ID,
 		MaxMembers: 100,
 	}
-	repo.Create(ctx, room)
+	_ = repo.Create(ctx, room)
 
-	repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user1.ID, Role: model.MemberRoleOwner})
-	repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user2.ID, Role: model.MemberRoleMember})
+	_ = repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user1.ID, Role: model.MemberRoleOwner})
+	_ = repo.AddMember(ctx, &model.RoomMember{RoomID: room.ID, UserID: user2.ID, Role: model.MemberRoleMember})
 
 	count, err := repo.CountMembers(ctx, room.ID)
 	if err != nil {

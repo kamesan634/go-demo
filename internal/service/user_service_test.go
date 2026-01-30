@@ -204,7 +204,7 @@ func TestUserService_UnblockUser(t *testing.T) {
 	blocked := createUserForServiceTestIsolated(t, db, prefix, "blocked")
 	ctx := context.Background()
 
-	service.BlockUser(ctx, blocker.ID, blocked.ID)
+	_ = service.BlockUser(ctx, blocker.ID, blocked.ID)
 
 	err := service.UnblockUser(ctx, blocker.ID, blocked.ID)
 	if err != nil {
@@ -226,7 +226,7 @@ func TestUserService_IsBlockedEither(t *testing.T) {
 	user2 := createUserForServiceTestIsolated(t, db, prefix, "user2")
 	ctx := context.Background()
 
-	service.BlockUser(ctx, user1.ID, user2.ID)
+	_ = service.BlockUser(ctx, user1.ID, user2.ID)
 
 	// Both directions should return true
 	isBlocked, _ := service.IsBlockedEither(ctx, user1.ID, user2.ID)
@@ -250,8 +250,8 @@ func TestUserService_ListBlockedUsers(t *testing.T) {
 	blocked2 := createUserForServiceTestIsolated(t, db, prefix, "blocked2")
 	ctx := context.Background()
 
-	service.BlockUser(ctx, blocker.ID, blocked1.ID)
-	service.BlockUser(ctx, blocker.ID, blocked2.ID)
+	_ = service.BlockUser(ctx, blocker.ID, blocked1.ID)
+	_ = service.BlockUser(ctx, blocker.ID, blocked2.ID)
 
 	blockedUsers, err := service.ListBlockedUsers(ctx, blocker.ID, 10, 0)
 	if err != nil {
@@ -301,7 +301,7 @@ func TestUserService_SendFriendRequest_ToBlocked(t *testing.T) {
 	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
-	service.BlockUser(ctx, friend.ID, user.ID)
+	_ = service.BlockUser(ctx, friend.ID, user.ID)
 
 	err := service.SendFriendRequest(ctx, user.ID, friend.ID)
 	if err == nil {
@@ -318,7 +318,7 @@ func TestUserService_AcceptFriendRequest(t *testing.T) {
 	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, user.ID, friend.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, friend.ID)
 
 	err := service.AcceptFriendRequest(ctx, friend.ID, user.ID)
 	if err != nil {
@@ -340,7 +340,7 @@ func TestUserService_RejectFriendRequest(t *testing.T) {
 	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, user.ID, friend.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, friend.ID)
 
 	err := service.RejectFriendRequest(ctx, friend.ID, user.ID)
 	if err != nil {
@@ -362,8 +362,8 @@ func TestUserService_RemoveFriend(t *testing.T) {
 	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, user.ID, friend.ID)
-	service.AcceptFriendRequest(ctx, friend.ID, user.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, friend.ID)
+	_ = service.AcceptFriendRequest(ctx, friend.ID, user.ID)
 
 	err := service.RemoveFriend(ctx, user.ID, friend.ID)
 	if err != nil {
@@ -386,10 +386,10 @@ func TestUserService_ListFriends(t *testing.T) {
 	friend2 := createUserForServiceTestIsolated(t, db, prefix, "friend2")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, user.ID, friend1.ID)
-	service.AcceptFriendRequest(ctx, friend1.ID, user.ID)
-	service.SendFriendRequest(ctx, user.ID, friend2.ID)
-	service.AcceptFriendRequest(ctx, friend2.ID, user.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, friend1.ID)
+	_ = service.AcceptFriendRequest(ctx, friend1.ID, user.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, friend2.ID)
+	_ = service.AcceptFriendRequest(ctx, friend2.ID, user.ID)
 
 	friends, err := service.ListFriends(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -411,8 +411,8 @@ func TestUserService_ListPendingRequests(t *testing.T) {
 	requester2 := createUserForServiceTestIsolated(t, db, prefix, "requester2")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, requester1.ID, user.ID)
-	service.SendFriendRequest(ctx, requester2.ID, user.ID)
+	_ = service.SendFriendRequest(ctx, requester1.ID, user.ID)
+	_ = service.SendFriendRequest(ctx, requester2.ID, user.ID)
 
 	pending, err := service.ListPendingRequests(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -434,8 +434,8 @@ func TestUserService_ListSentRequests(t *testing.T) {
 	target2 := createUserForServiceTestIsolated(t, db, prefix, "target2")
 	ctx := context.Background()
 
-	service.SendFriendRequest(ctx, user.ID, target1.ID)
-	service.SendFriendRequest(ctx, user.ID, target2.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, target1.ID)
+	_ = service.SendFriendRequest(ctx, user.ID, target2.ID)
 
 	sent, err := service.ListSentRequests(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -456,7 +456,7 @@ func TestUserService_GetOnlineUsers(t *testing.T) {
 	createUserForServiceTestIsolated(t, db, prefix, "user2")
 	ctx := context.Background()
 
-	service.UpdateStatus(ctx, user1.ID, model.UserStatusOnline)
+	_ = service.UpdateStatus(ctx, user1.ID, model.UserStatusOnline)
 
 	onlineUsers, err := service.GetOnlineUsers(ctx, 10, 0)
 	if err != nil {

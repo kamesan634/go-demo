@@ -124,7 +124,7 @@ func main() {
 				UserID: createdUsers[r.ownerIndex].ID,
 				Role:   model.MemberRoleOwner,
 			}
-			roomRepo.AddMember(ctx, member)
+			_ = roomRepo.AddMember(ctx, member)
 		}
 	}
 

@@ -127,10 +127,10 @@ func TestMessageHandler_GetMessages(t *testing.T) {
 	})
 
 	// Send some messages
-	messageService.SendMessage(context.Background(), &service.SendMessageInput{
+	_, _ = messageService.SendMessage(context.Background(), &service.SendMessageInput{
 		RoomID: room.ID, UserID: user.ID, Content: "Message 1", Type: model.MessageTypeText,
 	})
-	messageService.SendMessage(context.Background(), &service.SendMessageInput{
+	_, _ = messageService.SendMessage(context.Background(), &service.SendMessageInput{
 		RoomID: room.ID, UserID: user.ID, Content: "Message 2", Type: model.MessageTypeText,
 	})
 
@@ -147,7 +147,7 @@ func TestMessageHandler_GetMessages(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {
@@ -235,10 +235,10 @@ func TestMessageHandler_SearchMessages(t *testing.T) {
 		OwnerID: user.ID,
 	})
 
-	messageService.SendMessage(context.Background(), &service.SendMessageInput{
+	_, _ = messageService.SendMessage(context.Background(), &service.SendMessageInput{
 		RoomID: room.ID, UserID: user.ID, Content: "Hello World", Type: model.MessageTypeText,
 	})
-	messageService.SendMessage(context.Background(), &service.SendMessageInput{
+	_, _ = messageService.SendMessage(context.Background(), &service.SendMessageInput{
 		RoomID: room.ID, UserID: user.ID, Content: "Golang is great", Type: model.MessageTypeText,
 	})
 
@@ -255,7 +255,7 @@ func TestMessageHandler_SearchMessages(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 1 {
@@ -299,10 +299,10 @@ func TestMessageHandler_GetConversation(t *testing.T) {
 	user1 := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 	user2 := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: user1.ID, ReceiverID: user2.ID, Content: "Hi Bob", Type: model.MessageTypeText,
 	})
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: user2.ID, ReceiverID: user1.ID, Content: "Hi Alice", Type: model.MessageTypeText,
 	})
 
@@ -319,7 +319,7 @@ func TestMessageHandler_GetConversation(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {
@@ -336,10 +336,10 @@ func TestMessageHandler_ListConversations(t *testing.T) {
 	contact1 := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 	contact2 := createUserForMsgHandlerTestIsolated(t, db, prefix, "charlie")
 
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: contact1.ID, ReceiverID: user.ID, Content: "Hi", Type: model.MessageTypeText,
 	})
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: contact2.ID, ReceiverID: user.ID, Content: "Hey", Type: model.MessageTypeText,
 	})
 
@@ -356,7 +356,7 @@ func TestMessageHandler_ListConversations(t *testing.T) {
 	}
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
 	if len(data) != 2 {
@@ -373,10 +373,10 @@ func TestMessageHandler_GetUnreadCount(t *testing.T) {
 	sender := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 
 	// Send some unread messages
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: sender.ID, ReceiverID: user.ID, Content: "Msg 1", Type: model.MessageTypeText,
 	})
-	dmService.SendMessage(context.Background(), &service.SendDMInput{
+	_, _ = dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: sender.ID, ReceiverID: user.ID, Content: "Msg 2", Type: model.MessageTypeText,
 	})
 
