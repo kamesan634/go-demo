@@ -20,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupRoomHandlerTest(t *testing.T) (*gin.Engine, *service.RoomService, *utils.JWTManager, *sqlx.DB) {
+func setupRoomHandlerTestIsolated(t *testing.T) (*gin.Engine, *service.RoomService, *utils.JWTManager, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -58,40 +58,31 @@ func setupRoomHandlerTest(t *testing.T) (*gin.Engine, *service.RoomService, *uti
 		rooms.GET("/:id/members", handler.ListMembers)
 	}
 
-	return router, roomService, jwtManager, db
+	prefix := repository.GenerateUniquePrefix()
+	return router, roomService, jwtManager, db, prefix
 }
 
-func cleanupRoomHandlerTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupRoomHandlerTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE rooms, room_members, users, messages CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForRoomHandlerTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForRoomHandlerTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
 }
 
 func TestRoomHandler_Create(t *testing.T) {
-	router, _, jwtManager, db := setupRoomHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
 	body := map[string]interface{}{
-		"name":        "Test Room",
+		"name":        prefix + "_Test Room",
 		"description": "A test room",
 		"type":        "public",
 	}
@@ -110,20 +101,20 @@ func TestRoomHandler_Create(t *testing.T) {
 }
 
 func TestRoomHandler_ListPublic(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	// Create rooms
 	roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Public Room 1",
+		Name:    prefix + "_Public Room 1",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
 	roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Public Room 2",
+		Name:    prefix + "_Public Room 2",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -144,20 +135,29 @@ func TestRoomHandler_ListPublic(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].([]interface{})
-	if len(data) != 2 {
-		t.Errorf("Expected 2 rooms, got %d", len(data))
+	// Count rooms with our prefix
+	count := 0
+	for _, r := range data {
+		room := r.(map[string]interface{})
+		name := room["name"].(string)
+		if len(name) > len(prefix) && name[:len(prefix)] == prefix {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Errorf("Expected 2 rooms with prefix, got %d", count)
 	}
 }
 
 func TestRoomHandler_GetByID(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -176,14 +176,14 @@ func TestRoomHandler_GetByID(t *testing.T) {
 }
 
 func TestRoomHandler_Update(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Original Name",
+		Name:    prefix + "_Original Name",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -191,7 +191,7 @@ func TestRoomHandler_Update(t *testing.T) {
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
 	body := map[string]interface{}{
-		"name": "Updated Name",
+		"name": prefix + "_Updated Name",
 	}
 	jsonBody, _ := json.Marshal(body)
 
@@ -208,14 +208,14 @@ func TestRoomHandler_Update(t *testing.T) {
 }
 
 func TestRoomHandler_Delete(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "To Delete",
+		Name:    prefix + "_To Delete",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -235,15 +235,15 @@ func TestRoomHandler_Delete(t *testing.T) {
 }
 
 func TestRoomHandler_Join(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomHandlerTest(t, db, "alice")
-	member := createUserForRoomHandlerTest(t, db, "bob")
+	owner := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
+	member := createUserForRoomHandlerTestIsolated(t, db, prefix, "bob")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Public Room",
+		Name:    prefix + "_Public Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: owner.ID,
 	})
@@ -262,15 +262,15 @@ func TestRoomHandler_Join(t *testing.T) {
 }
 
 func TestRoomHandler_Leave(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomHandlerTest(t, db, "alice")
-	member := createUserForRoomHandlerTest(t, db, "bob")
+	owner := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
+	member := createUserForRoomHandlerTestIsolated(t, db, prefix, "bob")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Public Room",
+		Name:    prefix + "_Public Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: owner.ID,
 	})
@@ -291,15 +291,15 @@ func TestRoomHandler_Leave(t *testing.T) {
 }
 
 func TestRoomHandler_ListMembers(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomHandlerTest(t, db, "alice")
-	member := createUserForRoomHandlerTest(t, db, "bob")
+	owner := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
+	member := createUserForRoomHandlerTestIsolated(t, db, prefix, "bob")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: owner.ID,
 	})
@@ -328,18 +328,18 @@ func TestRoomHandler_ListMembers(t *testing.T) {
 }
 
 func TestRoomHandler_Search(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: "Tech Talk", Type: model.RoomTypePublic, OwnerID: user.ID})
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: "General", Type: model.RoomTypePublic, OwnerID: user.ID})
+	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: user.ID})
+	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: user.ID})
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
-	req := httptest.NewRequest("GET", "/api/v1/rooms/search?q=Tech", nil)
+	req := httptest.NewRequest("GET", "/api/v1/rooms/search?q="+prefix+"_Tech", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenPair.AccessToken)
 	w := httptest.NewRecorder()
 
@@ -359,14 +359,14 @@ func TestRoomHandler_Search(t *testing.T) {
 }
 
 func TestRoomHandler_ListMyRooms(t *testing.T) {
-	router, roomService, jwtManager, db := setupRoomHandlerTest(t)
+	router, roomService, jwtManager, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForRoomHandlerTest(t, db, "alice")
+	user := createUserForRoomHandlerTestIsolated(t, db, prefix, "alice")
 
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: "Room 1", Type: model.RoomTypePublic, OwnerID: user.ID})
-	roomService.Create(context.Background(), &service.CreateRoomInput{Name: "Room 2", Type: model.RoomTypePublic, OwnerID: user.ID})
+	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: user.ID})
+	roomService.Create(context.Background(), &service.CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: user.ID})
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -390,9 +390,9 @@ func TestRoomHandler_ListMyRooms(t *testing.T) {
 }
 
 func TestRoomHandler_Unauthorized(t *testing.T) {
-	router, _, _, db := setupRoomHandlerTest(t)
+	router, _, _, db, prefix := setupRoomHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupRoomHandlerTestDB(t, db)
+	defer cleanupRoomHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("GET", "/api/v1/rooms", nil)
 	w := httptest.NewRecorder()

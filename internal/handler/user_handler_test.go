@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupUserHandlerTest(t *testing.T) (*gin.Engine, *service.UserService, *utils.JWTManager, *sqlx.DB) {
+func setupUserHandlerTestIsolated(t *testing.T) (*gin.Engine, *service.UserService, *utils.JWTManager, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -59,40 +59,32 @@ func setupUserHandlerTest(t *testing.T) (*gin.Engine, *service.UserService, *uti
 		users.DELETE("/:id/friend", handler.RemoveFriend)
 	}
 
-	return router, userService, jwtManager, db
+	prefix := repository.GenerateUniquePrefix()
+	return router, userService, jwtManager, db, prefix
 }
 
-func cleanupUserHandlerTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupUserHandlerTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE users, blocked_users, friendships CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForHandlerTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForHandlerTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
 }
 
 func TestUserHandler_Search(t *testing.T) {
-	router, _, jwtManager, db := setupUserHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	bob := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
-	req := httptest.NewRequest("GET", "/api/v1/users/search?q=bob", nil)
+	// Search for bob using the full prefixed name
+	req := httptest.NewRequest("GET", "/api/v1/users/search?q="+prefix+"_bob", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenPair.AccessToken)
 	w := httptest.NewRecorder()
 
@@ -109,15 +101,17 @@ func TestUserHandler_Search(t *testing.T) {
 	if len(data) != 1 {
 		t.Errorf("Expected 1 result, got %d", len(data))
 	}
+
+	_ = bob // Use bob variable
 }
 
 func TestUserHandler_GetProfile(t *testing.T) {
-	router, _, jwtManager, db := setupUserHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	target := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	target := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -133,12 +127,12 @@ func TestUserHandler_GetProfile(t *testing.T) {
 }
 
 func TestUserHandler_BlockUser(t *testing.T) {
-	router, _, jwtManager, db := setupUserHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	target := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	target := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -154,12 +148,12 @@ func TestUserHandler_BlockUser(t *testing.T) {
 }
 
 func TestUserHandler_UnblockUser(t *testing.T) {
-	router, userService, jwtManager, db := setupUserHandlerTest(t)
+	router, userService, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	target := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	target := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	// Block first
 	userService.BlockUser(context.Background(), user.ID, target.ID)
@@ -178,13 +172,13 @@ func TestUserHandler_UnblockUser(t *testing.T) {
 }
 
 func TestUserHandler_ListBlockedUsers(t *testing.T) {
-	router, userService, jwtManager, db := setupUserHandlerTest(t)
+	router, userService, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	target1 := createUserForHandlerTest(t, db, "bob")
-	target2 := createUserForHandlerTest(t, db, "charlie")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	target1 := createUserForHandlerTestIsolated(t, db, prefix, "bob")
+	target2 := createUserForHandlerTestIsolated(t, db, prefix, "charlie")
 
 	userService.BlockUser(context.Background(), user.ID, target1.ID)
 	userService.BlockUser(context.Background(), user.ID, target2.ID)
@@ -211,12 +205,12 @@ func TestUserHandler_ListBlockedUsers(t *testing.T) {
 }
 
 func TestUserHandler_SendFriendRequest(t *testing.T) {
-	router, _, jwtManager, db := setupUserHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	friend := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	friend := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -232,12 +226,12 @@ func TestUserHandler_SendFriendRequest(t *testing.T) {
 }
 
 func TestUserHandler_AcceptFriendRequest(t *testing.T) {
-	router, userService, jwtManager, db := setupUserHandlerTest(t)
+	router, userService, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	friend := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	friend := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	userService.SendFriendRequest(context.Background(), friend.ID, user.ID)
 
@@ -255,12 +249,12 @@ func TestUserHandler_AcceptFriendRequest(t *testing.T) {
 }
 
 func TestUserHandler_ListFriends(t *testing.T) {
-	router, userService, jwtManager, db := setupUserHandlerTest(t)
+	router, userService, jwtManager, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForHandlerTest(t, db, "alice")
-	friend := createUserForHandlerTest(t, db, "bob")
+	user := createUserForHandlerTestIsolated(t, db, prefix, "alice")
+	friend := createUserForHandlerTestIsolated(t, db, prefix, "bob")
 
 	userService.SendFriendRequest(context.Background(), user.ID, friend.ID)
 	userService.AcceptFriendRequest(context.Background(), friend.ID, user.ID)
@@ -279,9 +273,9 @@ func TestUserHandler_ListFriends(t *testing.T) {
 }
 
 func TestUserHandler_Unauthorized(t *testing.T) {
-	router, _, _, db := setupUserHandlerTest(t)
+	router, _, _, db, prefix := setupUserHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupUserHandlerTestDB(t, db)
+	defer cleanupUserHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("GET", "/api/v1/users/search?q=test", nil)
 	w := httptest.NewRecorder()

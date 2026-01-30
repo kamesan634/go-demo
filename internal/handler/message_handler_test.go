@@ -20,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupMessageHandlerTest(t *testing.T) (*gin.Engine, *service.MessageService, *service.RoomService, *service.DirectMessageService, *utils.JWTManager, *sqlx.DB) {
+func setupMessageHandlerTestIsolated(t *testing.T) (*gin.Engine, *service.MessageService, *service.RoomService, *service.DirectMessageService, *utils.JWTManager, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -66,38 +66,29 @@ func setupMessageHandlerTest(t *testing.T) (*gin.Engine, *service.MessageService
 		dm.POST("/:user_id/read", handler.MarkDMAsRead)
 	}
 
-	return router, messageService, roomService, dmService, jwtManager, db
+	prefix := repository.GenerateUniquePrefix()
+	return router, messageService, roomService, dmService, jwtManager, db, prefix
 }
 
-func cleanupMessageHandlerTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupMessageHandlerTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE messages, direct_messages, rooms, room_members, users CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForMsgHandlerTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForMsgHandlerTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
 }
 
 func TestMessageHandler_SendMessage(t *testing.T) {
-	router, _, roomService, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, _, roomService, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -123,14 +114,14 @@ func TestMessageHandler_SendMessage(t *testing.T) {
 }
 
 func TestMessageHandler_GetMessages(t *testing.T) {
-	router, messageService, roomService, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, messageService, roomService, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -165,14 +156,14 @@ func TestMessageHandler_GetMessages(t *testing.T) {
 }
 
 func TestMessageHandler_UpdateMessage(t *testing.T) {
-	router, messageService, roomService, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, messageService, roomService, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -201,14 +192,14 @@ func TestMessageHandler_UpdateMessage(t *testing.T) {
 }
 
 func TestMessageHandler_DeleteMessage(t *testing.T) {
-	router, messageService, roomService, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, messageService, roomService, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -232,14 +223,14 @@ func TestMessageHandler_DeleteMessage(t *testing.T) {
 }
 
 func TestMessageHandler_SearchMessages(t *testing.T) {
-	router, messageService, roomService, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, messageService, roomService, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
 
 	room, _ := roomService.Create(context.Background(), &service.CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: user.ID,
 	})
@@ -273,12 +264,12 @@ func TestMessageHandler_SearchMessages(t *testing.T) {
 }
 
 func TestMessageHandler_SendDirectMessage(t *testing.T) {
-	router, _, _, _, jwtManager, db := setupMessageHandlerTest(t)
+	router, _, _, _, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	sender := createUserForMsgHandlerTest(t, db, "alice")
-	receiver := createUserForMsgHandlerTest(t, db, "bob")
+	sender := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
+	receiver := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(sender.ID, sender.Username)
 
@@ -301,12 +292,12 @@ func TestMessageHandler_SendDirectMessage(t *testing.T) {
 }
 
 func TestMessageHandler_GetConversation(t *testing.T) {
-	router, _, _, dmService, jwtManager, db := setupMessageHandlerTest(t)
+	router, _, _, dmService, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user1 := createUserForMsgHandlerTest(t, db, "alice")
-	user2 := createUserForMsgHandlerTest(t, db, "bob")
+	user1 := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
+	user2 := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 
 	dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: user1.ID, ReceiverID: user2.ID, Content: "Hi Bob", Type: model.MessageTypeText,
@@ -337,13 +328,13 @@ func TestMessageHandler_GetConversation(t *testing.T) {
 }
 
 func TestMessageHandler_ListConversations(t *testing.T) {
-	router, _, _, dmService, jwtManager, db := setupMessageHandlerTest(t)
+	router, _, _, dmService, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
-	contact1 := createUserForMsgHandlerTest(t, db, "bob")
-	contact2 := createUserForMsgHandlerTest(t, db, "charlie")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
+	contact1 := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
+	contact2 := createUserForMsgHandlerTestIsolated(t, db, prefix, "charlie")
 
 	dmService.SendMessage(context.Background(), &service.SendDMInput{
 		SenderID: contact1.ID, ReceiverID: user.ID, Content: "Hi", Type: model.MessageTypeText,
@@ -374,12 +365,12 @@ func TestMessageHandler_ListConversations(t *testing.T) {
 }
 
 func TestMessageHandler_GetUnreadCount(t *testing.T) {
-	router, _, _, dmService, jwtManager, db := setupMessageHandlerTest(t)
+	router, _, _, dmService, jwtManager, db, prefix := setupMessageHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupMessageHandlerTestDB(t, db)
+	defer cleanupMessageHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForMsgHandlerTest(t, db, "alice")
-	sender := createUserForMsgHandlerTest(t, db, "bob")
+	user := createUserForMsgHandlerTestIsolated(t, db, prefix, "alice")
+	sender := createUserForMsgHandlerTestIsolated(t, db, prefix, "bob")
 
 	// Send some unread messages
 	dmService.SendMessage(context.Background(), &service.SendDMInput{

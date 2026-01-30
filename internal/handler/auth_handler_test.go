@@ -20,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupAuthHandlerTest(t *testing.T) (*gin.Engine, *service.AuthService, *utils.JWTManager, *sqlx.DB) {
+func setupAuthHandlerTestIsolated(t *testing.T) (*gin.Engine, *service.AuthService, *utils.JWTManager, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -58,22 +58,24 @@ func setupAuthHandlerTest(t *testing.T) (*gin.Engine, *service.AuthService, *uti
 		authProtected.PUT("/profile", handler.UpdateProfile)
 	}
 
-	return router, authService, jwtManager, db
+	prefix := repository.GenerateUniquePrefix()
+	return router, authService, jwtManager, db, prefix
 }
 
-func cleanupAuthHandlerTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupAuthHandlerTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE users CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForAuthHandlerTest(t *testing.T, db *sqlx.DB, username, password string) *model.User {
+func createUserForAuthHandlerTestIsolated(t *testing.T, db *sqlx.DB, prefix, username, password string) *model.User {
 	t.Helper()
 	userRepo := repository.NewUserRepository(db)
 
+	uniqueName := prefix + "_" + username
 	hashedPassword, _ := utils.HashPassword(password)
 	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
+		Username:     uniqueName,
+		Email:        uniqueName + "@example.com",
 		PasswordHash: hashedPassword,
 		Status:       model.UserStatusOffline,
 	}
@@ -84,13 +86,13 @@ func createUserForAuthHandlerTest(t *testing.T, db *sqlx.DB, username, password 
 }
 
 func TestAuthHandler_Register(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
-		"username": "newuser",
-		"email":    "newuser@example.com",
+		"username": prefix + "_newuser",
+		"email":    prefix + "_newuser@example.com",
 		"password": "Password123!",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -118,16 +120,16 @@ func TestAuthHandler_Register(t *testing.T) {
 }
 
 func TestAuthHandler_Register_DuplicateUsername(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	// Create existing user
-	createUserForAuthHandlerTest(t, db, "existinguser", "password123")
+	existingUser := createUserForAuthHandlerTestIsolated(t, db, prefix, "existinguser", "password123")
 
 	body := map[string]interface{}{
-		"username": "existinguser",
-		"email":    "new@example.com",
+		"username": existingUser.Username, // Use the actual username with prefix
+		"email":    prefix + "_new@example.com",
 		"password": "Password123!",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -144,13 +146,13 @@ func TestAuthHandler_Register_DuplicateUsername(t *testing.T) {
 }
 
 func TestAuthHandler_Register_InvalidUsername(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
-		"username": "ab",  // Too short
-		"email":    "test@example.com",
+		"username": "ab", // Too short
+		"email":    prefix + "_test@example.com",
 		"password": "Password123!",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -167,12 +169,12 @@ func TestAuthHandler_Register_InvalidUsername(t *testing.T) {
 }
 
 func TestAuthHandler_Register_InvalidEmail(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
-		"username": "testuser",
+		"username": prefix + "_testuser",
 		"email":    "invalid-email",
 		"password": "Password123!",
 	}
@@ -190,14 +192,14 @@ func TestAuthHandler_Register_InvalidEmail(t *testing.T) {
 }
 
 func TestAuthHandler_Register_WeakPassword(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
-		"username": "testuser",
-		"email":    "test@example.com",
-		"password": "weak",  // Too weak
+		"username": prefix + "_testuser",
+		"email":    prefix + "_test@example.com",
+		"password": "weak", // Too weak
 	}
 	jsonBody, _ := json.Marshal(body)
 
@@ -213,9 +215,9 @@ func TestAuthHandler_Register_WeakPassword(t *testing.T) {
 }
 
 func TestAuthHandler_Register_InvalidJSON(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/register", bytes.NewReader([]byte("invalid json")))
 	req.Header.Set("Content-Type", "application/json")
@@ -229,14 +231,14 @@ func TestAuthHandler_Register_InvalidJSON(t *testing.T) {
 }
 
 func TestAuthHandler_Login(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	createUserForAuthHandlerTest(t, db, "loginuser", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "loginuser", "password123")
 
 	body := map[string]interface{}{
-		"username": "loginuser",
+		"username": user.Username,
 		"password": "password123",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -261,14 +263,14 @@ func TestAuthHandler_Login(t *testing.T) {
 }
 
 func TestAuthHandler_Login_WrongPassword(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	createUserForAuthHandlerTest(t, db, "loginuser", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "loginuser", "password123")
 
 	body := map[string]interface{}{
-		"username": "loginuser",
+		"username": user.Username,
 		"password": "wrongpassword",
 	}
 	jsonBody, _ := json.Marshal(body)
@@ -285,9 +287,9 @@ func TestAuthHandler_Login_WrongPassword(t *testing.T) {
 }
 
 func TestAuthHandler_Login_UserNotFound(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
 		"username": "nonexistent",
@@ -307,9 +309,9 @@ func TestAuthHandler_Login_UserNotFound(t *testing.T) {
 }
 
 func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
@@ -323,11 +325,11 @@ func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
 }
 
 func TestAuthHandler_GetMe(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "alice", "password123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -345,15 +347,15 @@ func TestAuthHandler_GetMe(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &response)
 
 	data := response["data"].(map[string]interface{})
-	if data["username"] != "alice" {
-		t.Errorf("Expected username 'alice', got '%v'", data["username"])
+	if data["username"] != user.Username {
+		t.Errorf("Expected username '%s', got '%v'", user.Username, data["username"])
 	}
 }
 
 func TestAuthHandler_GetMe_Unauthorized(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
 	w := httptest.NewRecorder()
@@ -366,11 +368,11 @@ func TestAuthHandler_GetMe_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_Logout(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "alice", "password123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -386,9 +388,9 @@ func TestAuthHandler_Logout(t *testing.T) {
 }
 
 func TestAuthHandler_Logout_Unauthorized(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
 	w := httptest.NewRecorder()
@@ -401,11 +403,11 @@ func TestAuthHandler_Logout_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_RefreshToken(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "alice", "password123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -434,9 +436,9 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 }
 
 func TestAuthHandler_RefreshToken_InvalidToken(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
 		"refresh_token": "invalid-token",
@@ -455,9 +457,9 @@ func TestAuthHandler_RefreshToken_InvalidToken(t *testing.T) {
 }
 
 func TestAuthHandler_RefreshToken_InvalidJSON(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", bytes.NewReader([]byte("invalid")))
 	req.Header.Set("Content-Type", "application/json")
@@ -471,12 +473,11 @@ func TestAuthHandler_RefreshToken_InvalidJSON(t *testing.T) {
 }
 
 func TestAuthHandler_ChangePassword(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	prefix := repository.GenerateUniquePrefix()
-	user := createUserForAuthHandlerTest(t, db, prefix+"_changepwd", "oldpassword123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "changepwd", "oldpassword123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -499,12 +500,11 @@ func TestAuthHandler_ChangePassword(t *testing.T) {
 }
 
 func TestAuthHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	prefix := repository.GenerateUniquePrefix()
-	user := createUserForAuthHandlerTest(t, db, prefix+"_changepwd_wrong", "oldpassword123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "changepwd_wrong", "oldpassword123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -527,9 +527,9 @@ func TestAuthHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
 }
 
 func TestAuthHandler_ChangePassword_Unauthorized(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
 		"current_password": "old",
@@ -549,11 +549,11 @@ func TestAuthHandler_ChangePassword_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_UpdateProfile(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "alice", "password123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 
@@ -576,9 +576,9 @@ func TestAuthHandler_UpdateProfile(t *testing.T) {
 }
 
 func TestAuthHandler_UpdateProfile_Unauthorized(t *testing.T) {
-	router, _, _, db := setupAuthHandlerTest(t)
+	router, _, _, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
 	body := map[string]interface{}{
 		"display_name": "New Name",
@@ -597,11 +597,11 @@ func TestAuthHandler_UpdateProfile_Unauthorized(t *testing.T) {
 }
 
 func TestAuthHandler_UpdateProfile_InvalidJSON(t *testing.T) {
-	router, _, jwtManager, db := setupAuthHandlerTest(t)
+	router, _, jwtManager, db, prefix := setupAuthHandlerTestIsolated(t)
 	defer db.Close()
-	defer cleanupAuthHandlerTestDB(t, db)
+	defer cleanupAuthHandlerTestByPrefix(t, db, prefix)
 
-	user := createUserForAuthHandlerTest(t, db, "alice", "password123")
+	user := createUserForAuthHandlerTestIsolated(t, db, prefix, "alice", "password123")
 
 	tokenPair, _ := jwtManager.GenerateTokenPair(user.ID, user.Username)
 

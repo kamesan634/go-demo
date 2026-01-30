@@ -13,36 +13,28 @@ import (
 // 使用有效的 UUID 格式作為不存在的 ID
 const nonExistentUUID = "00000000-0000-0000-0000-000000000000"
 
-// setupTestDB creates a test database connection
-func setupTestDB(t *testing.T) *sqlx.DB {
+// setupUserTestDBIsolated creates an isolated test database connection
+func setupUserTestDBIsolated(t *testing.T) (*sqlx.DB, string) {
 	t.Helper()
-
-	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		t.Skipf("Skipping test, could not connect to test database: %v", err)
-	}
-
-	return db
+	return SetupIsolatedTestDB(t)
 }
 
-func cleanupTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupUserTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE users CASCADE")
+	CleanupTestDataByPrefix(t, db, prefix)
 }
 
 func TestUserRepository_Create(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db) // 測試前先清理
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	user := &model.User{
-		Username:     "testuser_create",
-		Email:        "testcreate@example.com",
+		Username:     prefix + "_testuser_create",
+		Email:        prefix + "_testcreate@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
@@ -61,22 +53,23 @@ func TestUserRepository_Create(t *testing.T) {
 }
 
 func TestUserRepository_GetByID(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	// Create a user first
 	user := &model.User{
-		Username:     "testuser_getbyid",
-		Email:        "testgetbyid@example.com",
+		Username:     prefix + "_testuser_getbyid",
+		Email:        prefix + "_testgetbyid@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	// Test GetByID
 	found, err := repo.GetByID(ctx, user.ID)
@@ -96,23 +89,25 @@ func TestUserRepository_GetByID(t *testing.T) {
 }
 
 func TestUserRepository_GetByUsername(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
+	username := prefix + "_testuser_getbyusername"
 	user := &model.User{
-		Username:     "testuser_getbyusername",
-		Email:        "testgetbyusername@example.com",
+		Username:     username,
+		Email:        prefix + "_testgetbyusername@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
-	found, err := repo.GetByUsername(ctx, "testuser_getbyusername")
+	found, err := repo.GetByUsername(ctx, username)
 	if err != nil {
 		t.Fatalf("Failed to get user by username: %v", err)
 	}
@@ -123,23 +118,25 @@ func TestUserRepository_GetByUsername(t *testing.T) {
 }
 
 func TestUserRepository_GetByEmail(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
+	email := prefix + "_testgetbyemail@example.com"
 	user := &model.User{
-		Username:     "testuser_getbyemail",
-		Email:        "testgetbyemail@example.com",
+		Username:     prefix + "_testuser_getbyemail",
+		Email:        email,
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
-	found, err := repo.GetByEmail(ctx, "testgetbyemail@example.com")
+	found, err := repo.GetByEmail(ctx, email)
 	if err != nil {
 		t.Fatalf("Failed to get user by email: %v", err)
 	}
@@ -150,21 +147,22 @@ func TestUserRepository_GetByEmail(t *testing.T) {
 }
 
 func TestUserRepository_Update(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	user := &model.User{
-		Username:     "testuser_update",
-		Email:        "testupdate@example.com",
+		Username:     prefix + "_testuser_update",
+		Email:        prefix + "_testupdate@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	// Update user
 	user.DisplayName = sql.NullString{String: "Test User", Valid: true}
@@ -183,21 +181,22 @@ func TestUserRepository_Update(t *testing.T) {
 }
 
 func TestUserRepository_UpdateStatus(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	user := &model.User{
-		Username:     "testuser_status",
-		Email:        "teststatus@example.com",
+		Username:     prefix + "_testuser_status",
+		Email:        prefix + "_teststatus@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	err := repo.UpdateStatus(ctx, user.ID, model.UserStatusOnline)
 	if err != nil {
@@ -211,21 +210,22 @@ func TestUserRepository_UpdateStatus(t *testing.T) {
 }
 
 func TestUserRepository_Delete(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	user := &model.User{
-		Username:     "testuser_delete",
-		Email:        "testdelete@example.com",
+		Username:     prefix + "_testuser_delete",
+		Email:        prefix + "_testdelete@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	err := repo.Delete(ctx, user.ID)
 	if err != nil {
@@ -239,23 +239,25 @@ func TestUserRepository_Delete(t *testing.T) {
 }
 
 func TestUserRepository_ExistsByUsername(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
+	username := prefix + "_testuser_exists"
 	user := &model.User{
-		Username:     "testuser_exists",
-		Email:        "testexists@example.com",
+		Username:     username,
+		Email:        prefix + "_testexists@example.com",
 		PasswordHash: "hashedpassword",
 		Status:       model.UserStatusOffline,
 	}
-	repo.Create(ctx, user)
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
-	exists, err := repo.ExistsByUsername(ctx, "testuser_exists")
+	exists, err := repo.ExistsByUsername(ctx, username)
 	if err != nil {
 		t.Fatalf("Failed to check username exists: %v", err)
 	}
@@ -263,7 +265,7 @@ func TestUserRepository_ExistsByUsername(t *testing.T) {
 		t.Error("Expected username to exist")
 	}
 
-	exists, err = repo.ExistsByUsername(ctx, "nonexistent_user_xyz")
+	exists, err = repo.ExistsByUsername(ctx, "nonexistent_user_xyz_12345")
 	if err != nil {
 		t.Fatalf("Failed to check username exists: %v", err)
 	}
@@ -273,26 +275,27 @@ func TestUserRepository_ExistsByUsername(t *testing.T) {
 }
 
 func TestUserRepository_Search(t *testing.T) {
-	db := setupTestDB(t)
+	db, prefix := setupUserTestDBIsolated(t)
 	defer db.Close()
-	cleanupTestDB(t, db)
-	defer cleanupTestDB(t, db)
+	defer cleanupUserTestByPrefix(t, db, prefix)
 
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 
 	// Create test users with unique names
 	users := []*model.User{
-		{Username: "search_alice", Email: "search_alice@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
-		{Username: "search_bob", Email: "search_bob@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
-		{Username: "search_charlie", Email: "search_charlie@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
+		{Username: prefix + "_search_alice", Email: prefix + "_search_alice@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
+		{Username: prefix + "_search_bob", Email: prefix + "_search_bob@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
+		{Username: prefix + "_search_charlie", Email: prefix + "_search_charlie@example.com", PasswordHash: "hash", Status: model.UserStatusOffline},
 	}
 
 	for _, u := range users {
-		repo.Create(ctx, u)
+		if err := repo.Create(ctx, u); err != nil {
+			t.Fatalf("Failed to create user: %v", err)
+		}
 	}
 
-	results, err := repo.Search(ctx, "search_ali", 10, 0)
+	results, err := repo.Search(ctx, prefix+"_search_ali", 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to search users: %v", err)
 	}
@@ -301,7 +304,7 @@ func TestUserRepository_Search(t *testing.T) {
 		t.Errorf("Expected 1 result, got %d", len(results))
 	}
 
-	if len(results) > 0 && results[0].Username != "search_alice" {
-		t.Errorf("Expected search_alice, got %s", results[0].Username)
+	if len(results) > 0 && results[0].Username != prefix+"_search_alice" {
+		t.Errorf("Expected %s_search_alice, got %s", prefix, results[0].Username)
 	}
 }

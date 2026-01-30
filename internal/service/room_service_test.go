@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupTestRoomService(t *testing.T) (*RoomService, *sqlx.DB) {
+func setupTestRoomServiceIsolated(t *testing.T) (*RoomService, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -26,39 +26,44 @@ func setupTestRoomService(t *testing.T) (*RoomService, *sqlx.DB) {
 	logger := zap.NewNop()
 
 	service := NewRoomService(roomRepo, userRepo, messageRepo, logger)
-	return service, db
+	prefix := repository.GenerateUniquePrefix()
+	return service, db, prefix
 }
 
-func cleanupRoomServiceTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupRoomServiceTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE rooms, room_members, users, messages CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForRoomServiceTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForRoomServiceTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
+}
+
+func createRoomForRoomServiceTestIsolated(t *testing.T, service *RoomService, prefix string, owner *model.User, roomType model.RoomType) *model.Room {
+	t.Helper()
+	ctx := context.Background()
+	room, err := service.Create(ctx, &CreateRoomInput{
+		Name:    prefix + "_test_room",
+		Type:    roomType,
+		OwnerID: owner.ID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test room: %v", err)
 	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return room
 }
 
 func TestRoomService_Create(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
 	room, err := service.Create(ctx, &CreateRoomInput{
-		Name:        "Test Room",
+		Name:        prefix + "_Test Room",
 		Description: "A test room",
 		Type:        model.RoomTypePublic,
 		OwnerID:     owner.ID,
@@ -71,21 +76,21 @@ func TestRoomService_Create(t *testing.T) {
 	if room.ID == "" {
 		t.Error("Expected room ID to be set")
 	}
-	if room.Name != "Test Room" {
-		t.Errorf("Expected name 'Test Room', got '%s'", room.Name)
+	if room.Name != prefix+"_Test Room" {
+		t.Errorf("Expected name '%s_Test Room', got '%s'", prefix, room.Name)
 	}
 }
 
 func TestRoomService_Create_DefaultMaxMembers(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
 	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
+		Name:    prefix + "_Test Room",
 		Type:    model.RoomTypePublic,
 		OwnerID: owner.ID,
 	})
@@ -96,18 +101,14 @@ func TestRoomService_Create_DefaultMaxMembers(t *testing.T) {
 }
 
 func TestRoomService_GetByID(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	created, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	created := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	found, err := service.GetByID(ctx, created.ID)
 	if err != nil {
@@ -120,9 +121,9 @@ func TestRoomService_GetByID(t *testing.T) {
 }
 
 func TestRoomService_GetByID_NotFound(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
 	ctx := context.Background()
 
@@ -133,18 +134,14 @@ func TestRoomService_GetByID_NotFound(t *testing.T) {
 }
 
 func TestRoomService_GetByIDWithDetails(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	created, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	created := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	detail, err := service.GetByIDWithDetails(ctx, created.ID)
 	if err != nil {
@@ -160,20 +157,16 @@ func TestRoomService_GetByIDWithDetails(t *testing.T) {
 }
 
 func TestRoomService_Update(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Original Name",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	newName := "Updated Name"
+	newName := prefix + "_Updated Name"
 	updated, err := service.Update(ctx, &UpdateRoomInput{
 		RoomID: room.ID,
 		UserID: owner.ID,
@@ -190,21 +183,17 @@ func TestRoomService_Update(t *testing.T) {
 }
 
 func TestRoomService_Update_NoPermission(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	otherUser := createUserForRoomServiceTest(t, db, "other")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	otherUser := createUserForRoomServiceTestIsolated(t, db, prefix, "other")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
-	newName := "Updated Name"
+	newName := prefix + "_Updated Name"
 	_, err := service.Update(ctx, &UpdateRoomInput{
 		RoomID: room.ID,
 		UserID: otherUser.ID,
@@ -217,18 +206,14 @@ func TestRoomService_Update_NoPermission(t *testing.T) {
 }
 
 func TestRoomService_Delete(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	err := service.Delete(ctx, room.ID, owner.ID)
 	if err != nil {
@@ -242,19 +227,15 @@ func TestRoomService_Delete(t *testing.T) {
 }
 
 func TestRoomService_Delete_NoPermission(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	otherUser := createUserForRoomServiceTest(t, db, "other")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	otherUser := createUserForRoomServiceTestIsolated(t, db, prefix, "other")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	err := service.Delete(ctx, room.ID, otherUser.ID)
 	if err == nil {
@@ -263,37 +244,45 @@ func TestRoomService_Delete_NoPermission(t *testing.T) {
 }
 
 func TestRoomService_ListPublic(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: "Public 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: "Public 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: "Private", Type: model.RoomTypePrivate, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Public 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Private", Type: model.RoomTypePrivate, OwnerID: owner.ID})
 
 	rooms, err := service.ListPublic(ctx, 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to list public rooms: %v", err)
 	}
 
-	if len(rooms) != 2 {
-		t.Errorf("Expected 2 public rooms, got %d", len(rooms))
+	// Count rooms with our prefix
+	count := 0
+	for _, r := range rooms {
+		if len(r.Name) > len(prefix) && r.Name[:len(prefix)] == prefix {
+			count++
+		}
+	}
+
+	if count != 2 {
+		t.Errorf("Expected 2 public rooms with prefix, got %d", count)
 	}
 }
 
 func TestRoomService_ListByUserID(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: "Room 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: "Room 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 1", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Room 2", Type: model.RoomTypePublic, OwnerID: owner.ID})
 
 	rooms, err := service.ListByUserID(ctx, owner.ID, 10, 0)
 	if err != nil {
@@ -306,18 +295,18 @@ func TestRoomService_ListByUserID(t *testing.T) {
 }
 
 func TestRoomService_Search(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	service.Create(ctx, &CreateRoomInput{Name: "Tech Talk", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: "General", Type: model.RoomTypePublic, OwnerID: owner.ID})
-	service.Create(ctx, &CreateRoomInput{Name: "Random", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Tech Talk", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_General", Type: model.RoomTypePublic, OwnerID: owner.ID})
+	service.Create(ctx, &CreateRoomInput{Name: prefix + "_Random", Type: model.RoomTypePublic, OwnerID: owner.ID})
 
-	rooms, err := service.Search(ctx, "Tech", 10, 0)
+	rooms, err := service.Search(ctx, prefix+"_Tech", 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to search rooms: %v", err)
 	}
@@ -328,19 +317,15 @@ func TestRoomService_Search(t *testing.T) {
 }
 
 func TestRoomService_Join(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Public Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	err := service.Join(ctx, room.ID, member.ID)
 	if err != nil {
@@ -354,19 +339,15 @@ func TestRoomService_Join(t *testing.T) {
 }
 
 func TestRoomService_Join_PrivateRoom(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Private Room",
-		Type:    model.RoomTypePrivate,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePrivate)
 
 	err := service.Join(ctx, room.ID, member.ID)
 	if err == nil {
@@ -375,19 +356,15 @@ func TestRoomService_Join_PrivateRoom(t *testing.T) {
 }
 
 func TestRoomService_Leave(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Public Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, member.ID)
 
@@ -403,18 +380,14 @@ func TestRoomService_Leave(t *testing.T) {
 }
 
 func TestRoomService_Leave_OwnerCannotLeave(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	err := service.Leave(ctx, room.ID, owner.ID)
 	if err == nil {
@@ -423,19 +396,15 @@ func TestRoomService_Leave_OwnerCannotLeave(t *testing.T) {
 }
 
 func TestRoomService_InviteMember(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	invitee := createUserForRoomServiceTest(t, db, "invitee")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	invitee := createUserForRoomServiceTestIsolated(t, db, prefix, "invitee")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Private Room",
-		Type:    model.RoomTypePrivate,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePrivate)
 
 	err := service.InviteMember(ctx, room.ID, owner.ID, invitee.ID)
 	if err != nil {
@@ -449,19 +418,15 @@ func TestRoomService_InviteMember(t *testing.T) {
 }
 
 func TestRoomService_KickMember(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, member.ID)
 
@@ -477,19 +442,15 @@ func TestRoomService_KickMember(t *testing.T) {
 }
 
 func TestRoomService_KickMember_CannotKickOwner(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	admin := createUserForRoomServiceTest(t, db, "admin")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	admin := createUserForRoomServiceTestIsolated(t, db, prefix, "admin")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, admin.ID)
 	service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
@@ -501,19 +462,15 @@ func TestRoomService_KickMember_CannotKickOwner(t *testing.T) {
 }
 
 func TestRoomService_PromoteMember(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, member.ID)
 
@@ -529,19 +486,15 @@ func TestRoomService_PromoteMember(t *testing.T) {
 }
 
 func TestRoomService_DemoteMember(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	admin := createUserForRoomServiceTest(t, db, "admin")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	admin := createUserForRoomServiceTestIsolated(t, db, prefix, "admin")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, admin.ID)
 	service.PromoteMember(ctx, room.ID, owner.ID, admin.ID)
@@ -558,19 +511,15 @@ func TestRoomService_DemoteMember(t *testing.T) {
 }
 
 func TestRoomService_ListMembers(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	service.Join(ctx, room.ID, member.ID)
 
@@ -585,19 +534,15 @@ func TestRoomService_ListMembers(t *testing.T) {
 }
 
 func TestRoomService_IsMember(t *testing.T) {
-	service, db := setupTestRoomService(t)
+	service, db, prefix := setupTestRoomServiceIsolated(t)
 	defer db.Close()
-	defer cleanupRoomServiceTestDB(t, db)
+	defer cleanupRoomServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForRoomServiceTest(t, db, "owner")
-	member := createUserForRoomServiceTest(t, db, "member")
+	owner := createUserForRoomServiceTestIsolated(t, db, prefix, "owner")
+	member := createUserForRoomServiceTestIsolated(t, db, prefix, "member")
 	ctx := context.Background()
 
-	room, _ := service.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForRoomServiceTestIsolated(t, service, prefix, owner, model.RoomTypePublic)
 
 	// Member not joined yet
 	isMember, _ := service.IsMember(ctx, room.ID, member.ID)

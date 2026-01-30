@@ -13,60 +13,33 @@ import (
 // 使用有效的 UUID 格式作為不存在的 ID
 const msgNonExistentUUID = "00000000-0000-0000-0000-000000000000"
 
-func setupMessageTestDB(t *testing.T) *sqlx.DB {
+func setupMessageTestDBIsolated(t *testing.T) (*sqlx.DB, string) {
 	t.Helper()
-
-	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		t.Skipf("Skipping test, could not connect to test database: %v", err)
-	}
-
-	return db
+	return SetupIsolatedTestDB(t)
 }
 
-func cleanupMessageTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupMessageTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE messages, rooms, room_members, users CASCADE")
+	CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createTestUserForMessage(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createTestUserForMessageIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return CreateIsolatedTestUser(t, db, prefix, username)
 }
 
-func createTestRoom(t *testing.T, db *sqlx.DB, owner *model.User) *model.Room {
+func createTestRoomIsolated(t *testing.T, db *sqlx.DB, prefix string, owner *model.User) *model.Room {
 	t.Helper()
-	roomRepo := NewRoomRepository(db)
-	room := &model.Room{
-		Name:       "Test Room",
-		Type:       model.RoomTypePublic,
-		OwnerID:    owner.ID,
-		MaxMembers: 100,
-	}
-	if err := roomRepo.Create(context.Background(), room); err != nil {
-		t.Fatalf("Failed to create test room: %v", err)
-	}
-	return room
+	return CreateIsolatedTestRoom(t, db, prefix, owner)
 }
 
 func TestMessageRepository_Create(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -91,12 +64,12 @@ func TestMessageRepository_Create(t *testing.T) {
 }
 
 func TestMessageRepository_GetByID(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -106,7 +79,9 @@ func TestMessageRepository_GetByID(t *testing.T) {
 		Content: "Test message",
 		Type:    model.MessageTypeText,
 	}
-	repo.Create(ctx, msg)
+	if err := repo.Create(ctx, msg); err != nil {
+		t.Fatalf("Failed to create message: %v", err)
+	}
 
 	found, err := repo.GetByID(ctx, msg.ID)
 	if err != nil {
@@ -125,12 +100,12 @@ func TestMessageRepository_GetByID(t *testing.T) {
 }
 
 func TestMessageRepository_GetByIDWithUser(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -140,7 +115,9 @@ func TestMessageRepository_GetByIDWithUser(t *testing.T) {
 		Content: "Test message",
 		Type:    model.MessageTypeText,
 	}
-	repo.Create(ctx, msg)
+	if err := repo.Create(ctx, msg); err != nil {
+		t.Fatalf("Failed to create message: %v", err)
+	}
 
 	found, err := repo.GetByIDWithUser(ctx, msg.ID)
 	if err != nil {
@@ -153,12 +130,12 @@ func TestMessageRepository_GetByIDWithUser(t *testing.T) {
 }
 
 func TestMessageRepository_Update(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -168,7 +145,9 @@ func TestMessageRepository_Update(t *testing.T) {
 		Content: "Original message",
 		Type:    model.MessageTypeText,
 	}
-	repo.Create(ctx, msg)
+	if err := repo.Create(ctx, msg); err != nil {
+		t.Fatalf("Failed to create message: %v", err)
+	}
 
 	err := repo.Update(ctx, msg.ID, "Updated message")
 	if err != nil {
@@ -185,12 +164,12 @@ func TestMessageRepository_Update(t *testing.T) {
 }
 
 func TestMessageRepository_SoftDelete(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -200,7 +179,9 @@ func TestMessageRepository_SoftDelete(t *testing.T) {
 		Content: "To be deleted",
 		Type:    model.MessageTypeText,
 	}
-	repo.Create(ctx, msg)
+	if err := repo.Create(ctx, msg); err != nil {
+		t.Fatalf("Failed to create message: %v", err)
+	}
 
 	err := repo.SoftDelete(ctx, msg.ID)
 	if err != nil {
@@ -214,12 +195,12 @@ func TestMessageRepository_SoftDelete(t *testing.T) {
 }
 
 func TestMessageRepository_ListByRoomID(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -231,7 +212,9 @@ func TestMessageRepository_ListByRoomID(t *testing.T) {
 			Content: "Message " + string(rune('A'+i)),
 			Type:    model.MessageTypeText,
 		}
-		repo.Create(ctx, msg)
+		if err := repo.Create(ctx, msg); err != nil {
+			t.Fatalf("Failed to create message: %v", err)
+		}
 	}
 
 	messages, err := repo.ListByRoomID(ctx, room.ID, 10, 0)
@@ -245,12 +228,12 @@ func TestMessageRepository_ListByRoomID(t *testing.T) {
 }
 
 func TestMessageRepository_ListByRoomID_Pagination(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -262,7 +245,9 @@ func TestMessageRepository_ListByRoomID_Pagination(t *testing.T) {
 			Content: "Message",
 			Type:    model.MessageTypeText,
 		}
-		repo.Create(ctx, msg)
+		if err := repo.Create(ctx, msg); err != nil {
+			t.Fatalf("Failed to create message: %v", err)
+		}
 	}
 
 	// Get first page (5 messages)
@@ -279,12 +264,12 @@ func TestMessageRepository_ListByRoomID_Pagination(t *testing.T) {
 }
 
 func TestMessageRepository_Search(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -296,7 +281,9 @@ func TestMessageRepository_Search(t *testing.T) {
 			Content: content,
 			Type:    model.MessageTypeText,
 		}
-		repo.Create(ctx, msg)
+		if err := repo.Create(ctx, msg); err != nil {
+			t.Fatalf("Failed to create message: %v", err)
+		}
 	}
 
 	results, err := repo.Search(ctx, room.ID, "Golang", 10, 0)
@@ -314,12 +301,12 @@ func TestMessageRepository_Search(t *testing.T) {
 }
 
 func TestMessageRepository_CountByRoomID(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -331,7 +318,9 @@ func TestMessageRepository_CountByRoomID(t *testing.T) {
 			Content: "Message",
 			Type:    model.MessageTypeText,
 		}
-		repo.Create(ctx, msg)
+		if err := repo.Create(ctx, msg); err != nil {
+			t.Fatalf("Failed to create message: %v", err)
+		}
 	}
 
 	count, err := repo.CountByRoomID(ctx, room.ID)
@@ -345,12 +334,12 @@ func TestMessageRepository_CountByRoomID(t *testing.T) {
 }
 
 func TestMessageRepository_MessageWithReply(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 
@@ -361,7 +350,9 @@ func TestMessageRepository_MessageWithReply(t *testing.T) {
 		Content: "Original message",
 		Type:    model.MessageTypeText,
 	}
-	repo.Create(ctx, original)
+	if err := repo.Create(ctx, original); err != nil {
+		t.Fatalf("Failed to create message: %v", err)
+	}
 
 	// Create reply
 	reply := &model.Message{
@@ -371,7 +362,9 @@ func TestMessageRepository_MessageWithReply(t *testing.T) {
 		Type:      model.MessageTypeText,
 		ReplyToID: sql.NullString{String: original.ID, Valid: true},
 	}
-	repo.Create(ctx, reply)
+	if err := repo.Create(ctx, reply); err != nil {
+		t.Fatalf("Failed to create reply: %v", err)
+	}
 
 	found, _ := repo.GetByID(ctx, reply.ID)
 	if found.GetReplyToID() != original.ID {
@@ -380,12 +373,12 @@ func TestMessageRepository_MessageWithReply(t *testing.T) {
 }
 
 func TestMessageRepository_MessageTypes(t *testing.T) {
-	db := setupMessageTestDB(t)
+	db, prefix := setupMessageTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupMessageTestDB(t, db)
+	defer cleanupMessageTestByPrefix(t, db, prefix)
 
-	user := createTestUserForMessage(t, db, "sender")
-	room := createTestRoom(t, db, user)
+	user := createTestUserForMessageIsolated(t, db, prefix, "sender")
+	room := createTestRoomIsolated(t, db, prefix, user)
 	repo := NewMessageRepository(db)
 	ctx := context.Background()
 

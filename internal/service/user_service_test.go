@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupTestUserService(t *testing.T) (*UserService, *sqlx.DB) {
+func setupTestUserServiceIsolated(t *testing.T) (*UserService, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -26,35 +26,26 @@ func setupTestUserService(t *testing.T) (*UserService, *sqlx.DB) {
 	logger := zap.NewNop()
 
 	service := NewUserService(userRepo, blockedRepo, friendshipRepo, logger)
-	return service, db
+	prefix := repository.GenerateUniquePrefix()
+	return service, db, prefix
 }
 
-func cleanupUserServiceTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupUserServiceTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE users, blocked_users, friendships CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForServiceTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForServiceTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
 }
 
 func TestUserService_GetByID(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "testuser")
+	user := createUserForServiceTestIsolated(t, db, prefix, "testuser")
 	ctx := context.Background()
 
 	found, err := service.GetByID(ctx, user.ID)
@@ -68,9 +59,9 @@ func TestUserService_GetByID(t *testing.T) {
 }
 
 func TestUserService_GetByID_NotFound(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
 	ctx := context.Background()
 
@@ -81,11 +72,11 @@ func TestUserService_GetByID_NotFound(t *testing.T) {
 }
 
 func TestUserService_GetProfile(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "testuser")
+	user := createUserForServiceTestIsolated(t, db, prefix, "testuser")
 	ctx := context.Background()
 
 	profile, err := service.GetProfile(ctx, user.ID)
@@ -99,11 +90,11 @@ func TestUserService_GetProfile(t *testing.T) {
 }
 
 func TestUserService_UpdateProfile(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "testuser")
+	user := createUserForServiceTestIsolated(t, db, prefix, "testuser")
 	ctx := context.Background()
 
 	displayName := "Test User"
@@ -127,16 +118,17 @@ func TestUserService_UpdateProfile(t *testing.T) {
 }
 
 func TestUserService_Search(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	createUserForServiceTest(t, db, "alice")
-	createUserForServiceTest(t, db, "bob")
-	createUserForServiceTest(t, db, "charlie")
+	alice := createUserForServiceTestIsolated(t, db, prefix, "alice")
+	createUserForServiceTestIsolated(t, db, prefix, "bob")
+	createUserForServiceTestIsolated(t, db, prefix, "charlie")
 	ctx := context.Background()
 
-	results, err := service.Search(ctx, "ali", 10, 0)
+	// Search using the full prefixed username to find alice
+	results, err := service.Search(ctx, prefix+"_alice", 10, 0)
 	if err != nil {
 		t.Fatalf("Failed to search users: %v", err)
 	}
@@ -145,17 +137,17 @@ func TestUserService_Search(t *testing.T) {
 		t.Errorf("Expected 1 result, got %d", len(results))
 	}
 
-	if len(results) > 0 && results[0].Username != "alice" {
-		t.Errorf("Expected 'alice', got '%s'", results[0].Username)
+	if len(results) > 0 && results[0].Username != alice.Username {
+		t.Errorf("Expected '%s', got '%s'", alice.Username, results[0].Username)
 	}
 }
 
 func TestUserService_UpdateStatus(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "testuser")
+	user := createUserForServiceTestIsolated(t, db, prefix, "testuser")
 	ctx := context.Background()
 
 	err := service.UpdateStatus(ctx, user.ID, model.UserStatusOnline)
@@ -170,12 +162,12 @@ func TestUserService_UpdateStatus(t *testing.T) {
 }
 
 func TestUserService_BlockUser(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	blocker := createUserForServiceTest(t, db, "blocker")
-	blocked := createUserForServiceTest(t, db, "blocked")
+	blocker := createUserForServiceTestIsolated(t, db, prefix, "blocker")
+	blocked := createUserForServiceTestIsolated(t, db, prefix, "blocked")
 	ctx := context.Background()
 
 	err := service.BlockUser(ctx, blocker.ID, blocked.ID)
@@ -190,11 +182,11 @@ func TestUserService_BlockUser(t *testing.T) {
 }
 
 func TestUserService_BlockUser_Self(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
 	ctx := context.Background()
 
 	err := service.BlockUser(ctx, user.ID, user.ID)
@@ -204,12 +196,12 @@ func TestUserService_BlockUser_Self(t *testing.T) {
 }
 
 func TestUserService_UnblockUser(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	blocker := createUserForServiceTest(t, db, "blocker")
-	blocked := createUserForServiceTest(t, db, "blocked")
+	blocker := createUserForServiceTestIsolated(t, db, prefix, "blocker")
+	blocked := createUserForServiceTestIsolated(t, db, prefix, "blocked")
 	ctx := context.Background()
 
 	service.BlockUser(ctx, blocker.ID, blocked.ID)
@@ -226,12 +218,12 @@ func TestUserService_UnblockUser(t *testing.T) {
 }
 
 func TestUserService_IsBlockedEither(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user1 := createUserForServiceTest(t, db, "user1")
-	user2 := createUserForServiceTest(t, db, "user2")
+	user1 := createUserForServiceTestIsolated(t, db, prefix, "user1")
+	user2 := createUserForServiceTestIsolated(t, db, prefix, "user2")
 	ctx := context.Background()
 
 	service.BlockUser(ctx, user1.ID, user2.ID)
@@ -249,13 +241,13 @@ func TestUserService_IsBlockedEither(t *testing.T) {
 }
 
 func TestUserService_ListBlockedUsers(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	blocker := createUserForServiceTest(t, db, "blocker")
-	blocked1 := createUserForServiceTest(t, db, "blocked1")
-	blocked2 := createUserForServiceTest(t, db, "blocked2")
+	blocker := createUserForServiceTestIsolated(t, db, prefix, "blocker")
+	blocked1 := createUserForServiceTestIsolated(t, db, prefix, "blocked1")
+	blocked2 := createUserForServiceTestIsolated(t, db, prefix, "blocked2")
 	ctx := context.Background()
 
 	service.BlockUser(ctx, blocker.ID, blocked1.ID)
@@ -272,12 +264,12 @@ func TestUserService_ListBlockedUsers(t *testing.T) {
 }
 
 func TestUserService_SendFriendRequest(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend := createUserForServiceTest(t, db, "friend")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
 	err := service.SendFriendRequest(ctx, user.ID, friend.ID)
@@ -287,11 +279,11 @@ func TestUserService_SendFriendRequest(t *testing.T) {
 }
 
 func TestUserService_SendFriendRequest_ToSelf(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
 	ctx := context.Background()
 
 	err := service.SendFriendRequest(ctx, user.ID, user.ID)
@@ -301,12 +293,12 @@ func TestUserService_SendFriendRequest_ToSelf(t *testing.T) {
 }
 
 func TestUserService_SendFriendRequest_ToBlocked(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend := createUserForServiceTest(t, db, "friend")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
 	service.BlockUser(ctx, friend.ID, user.ID)
@@ -318,12 +310,12 @@ func TestUserService_SendFriendRequest_ToBlocked(t *testing.T) {
 }
 
 func TestUserService_AcceptFriendRequest(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend := createUserForServiceTest(t, db, "friend")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, user.ID, friend.ID)
@@ -340,12 +332,12 @@ func TestUserService_AcceptFriendRequest(t *testing.T) {
 }
 
 func TestUserService_RejectFriendRequest(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend := createUserForServiceTest(t, db, "friend")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, user.ID, friend.ID)
@@ -362,12 +354,12 @@ func TestUserService_RejectFriendRequest(t *testing.T) {
 }
 
 func TestUserService_RemoveFriend(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend := createUserForServiceTest(t, db, "friend")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend := createUserForServiceTestIsolated(t, db, prefix, "friend")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, user.ID, friend.ID)
@@ -385,13 +377,13 @@ func TestUserService_RemoveFriend(t *testing.T) {
 }
 
 func TestUserService_ListFriends(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	friend1 := createUserForServiceTest(t, db, "friend1")
-	friend2 := createUserForServiceTest(t, db, "friend2")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	friend1 := createUserForServiceTestIsolated(t, db, prefix, "friend1")
+	friend2 := createUserForServiceTestIsolated(t, db, prefix, "friend2")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, user.ID, friend1.ID)
@@ -410,13 +402,13 @@ func TestUserService_ListFriends(t *testing.T) {
 }
 
 func TestUserService_ListPendingRequests(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	requester1 := createUserForServiceTest(t, db, "requester1")
-	requester2 := createUserForServiceTest(t, db, "requester2")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	requester1 := createUserForServiceTestIsolated(t, db, prefix, "requester1")
+	requester2 := createUserForServiceTestIsolated(t, db, prefix, "requester2")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, requester1.ID, user.ID)
@@ -433,13 +425,13 @@ func TestUserService_ListPendingRequests(t *testing.T) {
 }
 
 func TestUserService_ListSentRequests(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForServiceTest(t, db, "user")
-	target1 := createUserForServiceTest(t, db, "target1")
-	target2 := createUserForServiceTest(t, db, "target2")
+	user := createUserForServiceTestIsolated(t, db, prefix, "user")
+	target1 := createUserForServiceTestIsolated(t, db, prefix, "target1")
+	target2 := createUserForServiceTestIsolated(t, db, prefix, "target2")
 	ctx := context.Background()
 
 	service.SendFriendRequest(ctx, user.ID, target1.ID)
@@ -456,12 +448,12 @@ func TestUserService_ListSentRequests(t *testing.T) {
 }
 
 func TestUserService_GetOnlineUsers(t *testing.T) {
-	service, db := setupTestUserService(t)
+	service, db, prefix := setupTestUserServiceIsolated(t)
 	defer db.Close()
-	defer cleanupUserServiceTestDB(t, db)
+	defer cleanupUserServiceTestByPrefix(t, db, prefix)
 
-	user1 := createUserForServiceTest(t, db, "user1")
-	createUserForServiceTest(t, db, "user2")
+	user1 := createUserForServiceTestIsolated(t, db, prefix, "user1")
+	createUserForServiceTestIsolated(t, db, prefix, "user2")
 	ctx := context.Background()
 
 	service.UpdateStatus(ctx, user1.ID, model.UserStatusOnline)
@@ -471,7 +463,15 @@ func TestUserService_GetOnlineUsers(t *testing.T) {
 		t.Fatalf("Failed to get online users: %v", err)
 	}
 
-	if len(onlineUsers) != 1 {
-		t.Errorf("Expected 1 online user, got %d", len(onlineUsers))
+	// At least 1 online user (the one we just set)
+	found := false
+	for _, u := range onlineUsers {
+		if u.ID == user1.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Expected to find user1 in online users")
 	}
 }

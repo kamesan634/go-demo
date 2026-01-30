@@ -13,44 +13,32 @@ import (
 // 使用有效的 UUID 格式作為不存在的 ID
 const roomNonExistentUUID = "00000000-0000-0000-0000-000000000000"
 
-func setupRoomTestDB(t *testing.T) *sqlx.DB {
+func setupRoomTestDBIsolated(t *testing.T) (*sqlx.DB, string) {
 	t.Helper()
-
-	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		t.Skipf("Skipping test, could not connect to test database: %v", err)
-	}
-
-	return db
+	return SetupIsolatedTestDB(t)
 }
 
-func cleanupRoomTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupRoomTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE rooms, room_members, users CASCADE")
+	CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createTestUser(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createTestUserForRoomIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return CreateIsolatedTestUser(t, db, prefix, username)
+}
+
+func createTestRoomForRoomIsolated(t *testing.T, db *sqlx.DB, prefix string, owner *model.User) *model.Room {
+	t.Helper()
+	return CreateIsolatedTestRoom(t, db, prefix, owner)
 }
 
 func TestRoomRepository_Create(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -76,11 +64,11 @@ func TestRoomRepository_Create(t *testing.T) {
 }
 
 func TestRoomRepository_GetByID(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -109,11 +97,11 @@ func TestRoomRepository_GetByID(t *testing.T) {
 }
 
 func TestRoomRepository_GetByIDWithMemberCount(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -144,11 +132,11 @@ func TestRoomRepository_GetByIDWithMemberCount(t *testing.T) {
 }
 
 func TestRoomRepository_Update(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -175,11 +163,11 @@ func TestRoomRepository_Update(t *testing.T) {
 }
 
 func TestRoomRepository_Delete(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -203,11 +191,11 @@ func TestRoomRepository_Delete(t *testing.T) {
 }
 
 func TestRoomRepository_ListPublic(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -243,11 +231,11 @@ func TestRoomRepository_ListPublic(t *testing.T) {
 }
 
 func TestRoomRepository_ListByUserID(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -277,11 +265,11 @@ func TestRoomRepository_ListByUserID(t *testing.T) {
 }
 
 func TestRoomRepository_Search(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -306,11 +294,11 @@ func TestRoomRepository_Search(t *testing.T) {
 }
 
 func TestRoomRepository_AddMember(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -345,12 +333,12 @@ func TestRoomRepository_AddMember(t *testing.T) {
 }
 
 func TestRoomRepository_AddMember_RoomFull(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user1 := createTestUser(t, db, "user1")
-	user2 := createTestUser(t, db, "user2")
+	user1 := createTestUserForRoomIsolated(t, db, prefix, "user1")
+	user2 := createTestUserForRoomIsolated(t, db, prefix, "user2")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -383,11 +371,11 @@ func TestRoomRepository_AddMember_RoomFull(t *testing.T) {
 }
 
 func TestRoomRepository_RemoveMember(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -419,11 +407,11 @@ func TestRoomRepository_RemoveMember(t *testing.T) {
 }
 
 func TestRoomRepository_GetMember(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "owner")
+	user := createTestUserForRoomIsolated(t, db, prefix, "owner")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -459,12 +447,12 @@ func TestRoomRepository_GetMember(t *testing.T) {
 }
 
 func TestRoomRepository_ListMembers(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user1 := createTestUser(t, db, "user1")
-	user2 := createTestUser(t, db, "user2")
+	user1 := createTestUserForRoomIsolated(t, db, prefix, "user1")
+	user2 := createTestUserForRoomIsolated(t, db, prefix, "user2")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -490,11 +478,11 @@ func TestRoomRepository_ListMembers(t *testing.T) {
 }
 
 func TestRoomRepository_UpdateMemberRole(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "user")
+	user := createTestUserForRoomIsolated(t, db, prefix, "user")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -525,11 +513,11 @@ func TestRoomRepository_UpdateMemberRole(t *testing.T) {
 }
 
 func TestRoomRepository_IsMember(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user := createTestUser(t, db, "user")
+	user := createTestUserForRoomIsolated(t, db, prefix, "user")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 
@@ -560,12 +548,12 @@ func TestRoomRepository_IsMember(t *testing.T) {
 }
 
 func TestRoomRepository_CountMembers(t *testing.T) {
-	db := setupRoomTestDB(t)
+	db, prefix := setupRoomTestDBIsolated(t)
 	defer db.Close()
-	defer cleanupRoomTestDB(t, db)
+	defer cleanupRoomTestByPrefix(t, db, prefix)
 
-	user1 := createTestUser(t, db, "user1")
-	user2 := createTestUser(t, db, "user2")
+	user1 := createTestUserForRoomIsolated(t, db, prefix, "user1")
+	user2 := createTestUserForRoomIsolated(t, db, prefix, "user2")
 	repo := NewRoomRepository(db)
 	ctx := context.Background()
 

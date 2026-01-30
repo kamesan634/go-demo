@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func setupTestMessageService(t *testing.T) (*MessageService, *RoomService, *sqlx.DB) {
+func setupTestMessageServiceIsolated(t *testing.T) (*MessageService, *RoomService, *sqlx.DB, string) {
 	t.Helper()
 
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
@@ -28,42 +28,43 @@ func setupTestMessageService(t *testing.T) (*MessageService, *RoomService, *sqlx
 	messageService := NewMessageService(messageRepo, roomRepo, logger)
 	roomService := NewRoomService(roomRepo, userRepo, messageRepo, logger)
 
-	return messageService, roomService, db
+	prefix := repository.GenerateUniquePrefix()
+	return messageService, roomService, db, prefix
 }
 
-func cleanupMessageServiceTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupMessageServiceTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE messages, rooms, room_members, users CASCADE")
+	repository.CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createUserForMessageServiceTest(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createUserForMessageServiceTestIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := repository.NewUserRepository(db)
-	user := &model.User{
-		Username:     username,
-		Email:        username + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
+	return repository.CreateIsolatedTestUser(t, db, prefix, username)
+}
+
+func createRoomForMessageServiceTestIsolated(t *testing.T, db *sqlx.DB, prefix string, owner *model.User, roomService *RoomService) *model.Room {
+	t.Helper()
+	ctx := context.Background()
+	room, err := roomService.Create(ctx, &CreateRoomInput{
+		Name:    prefix + "_test_room",
+		Type:    model.RoomTypePublic,
+		OwnerID: owner.ID,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test room: %v", err)
 	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return room
 }
 
 func TestMessageService_SendMessage(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	msg, err := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -85,19 +86,15 @@ func TestMessageService_SendMessage(t *testing.T) {
 }
 
 func TestMessageService_SendMessage_NotMember(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForMessageServiceTest(t, db, "owner")
-	nonMember := createUserForMessageServiceTest(t, db, "nonmember")
+	owner := createUserForMessageServiceTestIsolated(t, db, prefix, "owner")
+	nonMember := createUserForMessageServiceTestIsolated(t, db, prefix, "nonmember")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, owner, roomService)
 
 	_, err := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -112,18 +109,14 @@ func TestMessageService_SendMessage_NotMember(t *testing.T) {
 }
 
 func TestMessageService_GetByID(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	sent, _ := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -143,18 +136,14 @@ func TestMessageService_GetByID(t *testing.T) {
 }
 
 func TestMessageService_UpdateMessage(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	sent, _ := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -177,19 +166,15 @@ func TestMessageService_UpdateMessage(t *testing.T) {
 }
 
 func TestMessageService_UpdateMessage_NotOwner(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	owner := createUserForMessageServiceTest(t, db, "owner")
-	otherUser := createUserForMessageServiceTest(t, db, "other")
+	owner := createUserForMessageServiceTestIsolated(t, db, prefix, "owner")
+	otherUser := createUserForMessageServiceTestIsolated(t, db, prefix, "other")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: owner.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, owner, roomService)
 
 	roomService.Join(ctx, room.ID, otherUser.ID)
 
@@ -207,18 +192,14 @@ func TestMessageService_UpdateMessage_NotOwner(t *testing.T) {
 }
 
 func TestMessageService_DeleteMessage(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	sent, _ := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -239,18 +220,14 @@ func TestMessageService_DeleteMessage(t *testing.T) {
 }
 
 func TestMessageService_ListByRoomID(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	// Send 5 messages
 	for i := 0; i < 5; i++ {
@@ -273,18 +250,14 @@ func TestMessageService_ListByRoomID(t *testing.T) {
 }
 
 func TestMessageService_ListByRoomID_Pagination(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	// Send 10 messages
 	for i := 0; i < 10; i++ {
@@ -308,18 +281,14 @@ func TestMessageService_ListByRoomID_Pagination(t *testing.T) {
 }
 
 func TestMessageService_Search(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Hello World", Type: model.MessageTypeText})
 	msgService.SendMessage(ctx, &SendMessageInput{RoomID: room.ID, UserID: user.ID, Content: "Golang is great", Type: model.MessageTypeText})
@@ -336,18 +305,14 @@ func TestMessageService_Search(t *testing.T) {
 }
 
 func TestMessageService_SendMessage_WithReply(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	original, _ := msgService.SendMessage(ctx, &SendMessageInput{
 		RoomID:  room.ID,
@@ -374,18 +339,14 @@ func TestMessageService_SendMessage_WithReply(t *testing.T) {
 }
 
 func TestMessageService_SendMessage_MessageTypes(t *testing.T) {
-	msgService, roomService, db := setupTestMessageService(t)
+	msgService, roomService, db, prefix := setupTestMessageServiceIsolated(t)
 	defer db.Close()
-	defer cleanupMessageServiceTestDB(t, db)
+	defer cleanupMessageServiceTestByPrefix(t, db, prefix)
 
-	user := createUserForMessageServiceTest(t, db, "sender")
+	user := createUserForMessageServiceTestIsolated(t, db, prefix, "sender")
 	ctx := context.Background()
 
-	room, _ := roomService.Create(ctx, &CreateRoomInput{
-		Name:    "Test Room",
-		Type:    model.RoomTypePublic,
-		OwnerID: user.ID,
-	})
+	room := createRoomForMessageServiceTestIsolated(t, db, prefix, user, roomService)
 
 	types := []model.MessageType{
 		model.MessageTypeText,

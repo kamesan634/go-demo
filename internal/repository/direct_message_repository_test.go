@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/go-demo/chat/internal/model"
 	"github.com/jmoiron/sqlx"
@@ -13,48 +12,28 @@ import (
 // 使用有效的 UUID 格式作為不存在的 ID
 const dmNonExistentUUID = "00000000-0000-0000-0000-000000000000"
 
-func setupDMTestDB(t *testing.T) *sqlx.DB {
+func setupDMTestDBIsolated(t *testing.T) (*sqlx.DB, string) {
 	t.Helper()
-
-	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=chat_test sslmode=disable"
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		t.Skipf("Skipping test, could not connect to test database: %v", err)
-	}
-
-	return db
+	return SetupIsolatedTestDB(t)
 }
 
-func cleanupDMTestDB(t *testing.T, db *sqlx.DB) {
+func cleanupDMTestByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	t.Helper()
-	db.Exec("TRUNCATE direct_messages, users CASCADE")
+	CleanupTestDataByPrefix(t, db, prefix)
 }
 
-func createTestUserForDM(t *testing.T, db *sqlx.DB, username string) *model.User {
+func createTestUserForDMIsolated(t *testing.T, db *sqlx.DB, prefix, username string) *model.User {
 	t.Helper()
-	userRepo := NewUserRepository(db)
-	// 添加時間戳確保唯一性
-	uniqueUsername := username + "_" + time.Now().Format("150405.000000")
-	user := &model.User{
-		Username:     uniqueUsername,
-		Email:        uniqueUsername + "@example.com",
-		PasswordHash: "hashedpassword",
-		Status:       model.UserStatusOffline,
-	}
-	if err := userRepo.Create(context.Background(), user); err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
-	return user
+	return CreateIsolatedTestUser(t, db, prefix, username)
 }
 
 func TestDirectMessageRepository_Create(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db) // 測試前清理
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
@@ -79,13 +58,12 @@ func TestDirectMessageRepository_Create(t *testing.T) {
 }
 
 func TestDirectMessageRepository_GetByID(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
@@ -95,7 +73,9 @@ func TestDirectMessageRepository_GetByID(t *testing.T) {
 		Content:    "Test message",
 		Type:       model.MessageTypeText,
 	}
-	repo.Create(ctx, dm)
+	if err := repo.Create(ctx, dm); err != nil {
+		t.Fatalf("Failed to create DM: %v", err)
+	}
 
 	found, err := repo.GetByID(ctx, dm.ID)
 	if err != nil {
@@ -114,13 +94,12 @@ func TestDirectMessageRepository_GetByID(t *testing.T) {
 }
 
 func TestDirectMessageRepository_ListConversation(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	user1 := createTestUserForDM(t, db, "dm_user1")
-	user2 := createTestUserForDM(t, db, "dm_user2")
+	user1 := createTestUserForDMIsolated(t, db, prefix, "dm_user1")
+	user2 := createTestUserForDMIsolated(t, db, prefix, "dm_user2")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
@@ -149,26 +128,29 @@ func TestDirectMessageRepository_ListConversation(t *testing.T) {
 }
 
 func TestDirectMessageRepository_ListConversations(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	user := createTestUserForDM(t, db, "dm_main_user")
-	contact1 := createTestUserForDM(t, db, "dm_contact1")
-	contact2 := createTestUserForDM(t, db, "dm_contact2")
+	user := createTestUserForDMIsolated(t, db, prefix, "dm_main_user")
+	contact1 := createTestUserForDMIsolated(t, db, prefix, "dm_contact1")
+	contact2 := createTestUserForDMIsolated(t, db, prefix, "dm_contact2")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
 	// 與 contact1 的對話
-	repo.Create(ctx, &model.DirectMessage{
+	if err := repo.Create(ctx, &model.DirectMessage{
 		SenderID: contact1.ID, ReceiverID: user.ID, Content: "Hi from contact1", Type: model.MessageTypeText,
-	})
+	}); err != nil {
+		t.Fatalf("Failed to create DM: %v", err)
+	}
 
 	// 與 contact2 的對話
-	repo.Create(ctx, &model.DirectMessage{
+	if err := repo.Create(ctx, &model.DirectMessage{
 		SenderID: contact2.ID, ReceiverID: user.ID, Content: "Hi from contact2", Type: model.MessageTypeText,
-	})
+	}); err != nil {
+		t.Fatalf("Failed to create DM: %v", err)
+	}
 
 	conversations, err := repo.ListConversations(ctx, user.ID, 10, 0)
 	if err != nil {
@@ -181,13 +163,12 @@ func TestDirectMessageRepository_ListConversations(t *testing.T) {
 }
 
 func TestDirectMessageRepository_MarkAsRead(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
@@ -197,7 +178,9 @@ func TestDirectMessageRepository_MarkAsRead(t *testing.T) {
 		Content:    "Unread message",
 		Type:       model.MessageTypeText,
 	}
-	repo.Create(ctx, dm)
+	if err := repo.Create(ctx, dm); err != nil {
+		t.Fatalf("Failed to create DM: %v", err)
+	}
 
 	// 確認初始為未讀
 	if dm.IsRead {
@@ -211,31 +194,35 @@ func TestDirectMessageRepository_MarkAsRead(t *testing.T) {
 	}
 
 	// 驗證已讀
-	found, _ := repo.GetByID(ctx, dm.ID)
+	found, err := repo.GetByID(ctx, dm.ID)
+	if err != nil {
+		t.Fatalf("Failed to get DM: %v", err)
+	}
 	if !found.IsRead {
 		t.Error("Expected message to be read after marking")
 	}
 }
 
 func TestDirectMessageRepository_CountUnread(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
 	// 建立 3 則未讀訊息
 	for i := 0; i < 3; i++ {
-		repo.Create(ctx, &model.DirectMessage{
+		if err := repo.Create(ctx, &model.DirectMessage{
 			SenderID:   sender.ID,
 			ReceiverID: receiver.ID,
 			Content:    "Unread",
 			Type:       model.MessageTypeText,
-		})
+		}); err != nil {
+			t.Fatalf("Failed to create DM: %v", err)
+		}
 	}
 
 	count, err := repo.CountUnread(ctx, receiver.ID)
@@ -249,13 +236,12 @@ func TestDirectMessageRepository_CountUnread(t *testing.T) {
 }
 
 func TestDirectMessageRepository_DeleteForUser(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
@@ -265,7 +251,9 @@ func TestDirectMessageRepository_DeleteForUser(t *testing.T) {
 		Content:    "To delete",
 		Type:       model.MessageTypeText,
 	}
-	repo.Create(ctx, dm)
+	if err := repo.Create(ctx, dm); err != nil {
+		t.Fatalf("Failed to create DM: %v", err)
+	}
 
 	// 接收者刪除訊息
 	err := repo.DeleteForUser(ctx, dm.ID, receiver.ID)
@@ -284,24 +272,25 @@ func TestDirectMessageRepository_DeleteForUser(t *testing.T) {
 }
 
 func TestDirectMessageRepository_CountUnreadFromUser(t *testing.T) {
-	db := setupDMTestDB(t)
+	db, prefix := setupDMTestDBIsolated(t)
 	defer db.Close()
-	cleanupDMTestDB(t, db)
-	defer cleanupDMTestDB(t, db)
+	defer cleanupDMTestByPrefix(t, db, prefix)
 
-	sender := createTestUserForDM(t, db, "dm_sender")
-	receiver := createTestUserForDM(t, db, "dm_receiver")
+	sender := createTestUserForDMIsolated(t, db, prefix, "dm_sender")
+	receiver := createTestUserForDMIsolated(t, db, prefix, "dm_receiver")
 	repo := NewDirectMessageRepository(db)
 	ctx := context.Background()
 
 	// 建立 2 則未讀訊息
 	for i := 0; i < 2; i++ {
-		repo.Create(ctx, &model.DirectMessage{
+		if err := repo.Create(ctx, &model.DirectMessage{
 			SenderID:   sender.ID,
 			ReceiverID: receiver.ID,
 			Content:    "Unread",
 			Type:       model.MessageTypeText,
-		})
+		}); err != nil {
+			t.Fatalf("Failed to create DM: %v", err)
+		}
 	}
 
 	count, err := repo.CountUnreadFromUser(ctx, receiver.ID, sender.ID)

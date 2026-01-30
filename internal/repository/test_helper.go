@@ -50,12 +50,17 @@ func CleanupTestDataByPrefix(t *testing.T, db *sqlx.DB, prefix string) {
 	db.ExecContext(ctx, "DELETE FROM message_attachments WHERE message_id IN (SELECT id FROM messages WHERE content LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM notifications WHERE user_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM direct_messages WHERE sender_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
+	db.ExecContext(ctx, "DELETE FROM direct_messages WHERE receiver_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM messages WHERE user_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM room_members WHERE user_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM blocked_users WHERE blocker_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
+	db.ExecContext(ctx, "DELETE FROM blocked_users WHERE blocked_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM friendships WHERE user_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
+	db.ExecContext(ctx, "DELETE FROM friendships WHERE friend_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM rooms WHERE owner_id IN (SELECT id FROM users WHERE username LIKE $1)", prefix+"%")
+	db.ExecContext(ctx, "DELETE FROM rooms WHERE name LIKE $1", prefix+"%")
 	db.ExecContext(ctx, "DELETE FROM users WHERE username LIKE $1", prefix+"%")
+	db.ExecContext(ctx, "DELETE FROM users WHERE email LIKE $1", prefix+"%")
 }
 
 // CreateIsolatedTestUser 建立隔離的測試用戶
